@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import AcaDexLogo from "@/components/shared/AcaDexLogo";
 
 export default function NotFoundPage() {
   return (
@@ -32,9 +33,7 @@ export default function NotFoundPage() {
         {/* Wordmark */}
         <div className="mb-10 flex items-center gap-2.5">
           <div className="flex size-8 items-center justify-center rounded-[7px] bg-primary text-primary-foreground shadow-sm">
-            <span className="text-[15px] font-semibold leading-none tracking-tight">
-              A
-            </span>
+            <AcaDexLogo />
           </div>
           <span className="text-[15px] font-semibold tracking-tight text-foreground">
             AcaDex

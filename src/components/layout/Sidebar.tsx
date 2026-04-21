@@ -1,6 +1,7 @@
 import { NavLink } from "react-router-dom";
 import { LayoutGrid, Leaf } from "lucide-react";
 import { cn } from "@/lib/utils";
+import AcaDexLogo from "@/components/shared/AcaDexLogo";
 
 interface NavItem {
   to: string;
@@ -20,9 +21,7 @@ export default function Sidebar() {
       {/* Wordmark — matches login */}
       <div className="flex h-14 items-center gap-2.5 px-4">
         <div className="flex size-7 items-center justify-center rounded-[6px] bg-primary text-primary-foreground shadow-sm">
-          <span className="text-[13px] font-semibold leading-none tracking-tight">
-            A
-          </span>
+          <AcaDexLogo size="size-[15px]" />
         </div>
         <span className="text-[14px] font-semibold tracking-tight text-foreground">
           AcaDex
