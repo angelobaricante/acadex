@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { mockSignIn } from "@/lib/api";
 import { useSessionStore } from "@/lib/store";
@@ -95,22 +95,34 @@ export default function LoginPage() {
   const setUser = useSessionStore((s) => s.setUser);
   const [role, setRole] = useState<Role>("faculty");
   const [loading, setLoading] = useState(false);
+  const [exiting, setExiting] = useState(false);
   const roleIndex = ROLE_OPTIONS.findIndex((r) => r.value === role);
 
   async function handleSignIn() {
     if (loading) return;
     setLoading(true);
+    setExiting(true);
     try {
-      const user = await mockSignIn(role);
+      // Run the API call and the exit animation minimum timer in parallel
+      // so navigation never waits longer than the slower of the two.
+      const [user] = await Promise.all([
+        mockSignIn(role),
+        new Promise<void>((r) => setTimeout(r, 350)),
+      ]);
       setUser(user);
       navigate("/", { replace: true });
-    } finally {
+    } catch {
+      // If sign-in fails, reverse the exit so the form reappears
+      setExiting(false);
       setLoading(false);
     }
   }
 
   return (
-    <div className="relative min-h-full overflow-hidden bg-[hsl(48_25%_98%)]">
+    <div
+      className="relative min-h-full overflow-hidden bg-[hsl(48_25%_98%)]"
+      style={exiting ? { animation: "page-exit 0.35s cubic-bezier(0.4,0,1,1) forwards" } : undefined}
+    >
       {/* Ambient green radial glow, anchored top-left for asymmetry */}
       <div
         aria-hidden="true"
@@ -135,9 +147,9 @@ export default function LoginPage() {
         }}
       />
 
-      <main className="relative mx-auto flex min-h-screen w-full max-w-[440px] flex-col justify-center px-6 py-16">
+      <main className="relative mx-auto flex min-h-screen w-full max-w-[440px] flex-col justify-center px-4 py-10 sm:px-6 sm:py-16">
         {/* Wordmark */}
-        <div className="mb-10 flex items-center gap-2.5">
+        <div className="mb-8 flex items-center gap-2.5 sm:mb-10">
           <div className="flex size-8 items-center justify-center rounded-[7px] bg-primary text-primary-foreground shadow-sm">
             <AcaDexLogo />
           </div>
@@ -147,9 +159,9 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl border border-border/80 bg-card p-7 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_8px_24px_-12px_rgba(16,24,40,0.08)]">
+        <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_8px_24px_-12px_rgba(16,24,40,0.08)] sm:p-7">
           <div className="mb-6 space-y-1.5">
-            <h1 className="text-[22px] font-semibold leading-tight tracking-tight text-foreground">
+            <h1 className="text-[20px] font-semibold leading-tight tracking-tight text-foreground sm:text-[22px]">
               Welcome back
             </h1>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
@@ -231,68 +243,37 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <p className="mt-5 text-[11.5px] leading-relaxed text-muted-foreground">
-            Demo mode. Google sign-in is simulated — the role above picks which
-            fake user you sign in as.
-          </p>
+          <div className="mt-5 flex gap-2.5 rounded-lg border border-amber-200/70 bg-amber-50/50 px-3 py-2.5">
+            <Info className="mt-px size-3.5 shrink-0 text-amber-500/90" strokeWidth={1.8} />
+            <p className="text-[11.5px] leading-relaxed text-amber-900/60">
+              Demo mode. Google sign-in is simulated — the role above picks
+              which fake user you sign in as.
+            </p>
+          </div>
         </div>
 
         {/* Sustainability stat row */}
-        <div className="mt-8 flex items-start justify-center gap-0">
-          <StatPill icon={<ReductionIcon />} value="82%" label="Avg Reduction" />
-          <div aria-hidden="true" className="mx-5 mt-3 h-12 w-px bg-border/60" />
-          <StatPill icon={<ArchiveIcon />} value="520+" label="Files Archived" />
-          <div aria-hidden="true" className="mx-5 mt-3 h-12 w-px bg-border/60" />
-          <StatPill icon={<LeafIcon />} value="3.2kg" label="CO₂ Saved" />
+        <div className="mt-6 flex items-center justify-center gap-4 sm:mt-8 sm:gap-8">
+          <StatPill value="82%" label="Avg Reduction" />
+          <div aria-hidden="true" className="h-7 w-px bg-border sm:h-9" />
+          <StatPill value="520+" label="Files Archived" />
+          <div aria-hidden="true" className="h-7 w-px bg-border sm:h-9" />
+          <StatPill value="3.2kg" label="CO₂ Saved" />
         </div>
       </main>
     </div>
   );
 }
 
-function ReductionIcon() {
+function StatPill({ value, label }: { value: string; label: string }) {
   return (
-    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="currentColor">
-      <rect x="1" y="2.5" width="14" height="2.5" rx="1.25" />
-      <rect x="3.5" y="7" width="9" height="2.5" rx="1.25" />
-      <rect x="6" y="11.5" width="4" height="2.5" rx="1.25" />
-    </svg>
-  );
-}
-
-function ArchiveIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="currentColor">
-      <rect x="1" y="2" width="14" height="3" rx="1" />
-      <path d="M2 5.5h12V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5.5z" />
-      <rect x="5.5" y="9.25" width="5" height="1.75" rx="0.875" fill="hsl(48 25% 98%)" />
-    </svg>
-  );
-}
-
-function LeafIcon() {
-  return (
-    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="currentColor">
-      <path d="M13.5 1.5C13.5 1.5 14.5 9 10 12.5C7.5 14.5 3 13.5 2 14.5C2 14.5 2 10.5 4.5 8C7 5.5 11 4.5 13.5 1.5Z" />
-      <path d="M2 14.5C4.5 12 8 8.5 13.5 1.5" fill="none" stroke="hsl(48 25% 98%)" strokeWidth="1" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function StatPill({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
-  return (
-    <div className="flex flex-col items-center gap-2">
-      <div className="flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        {icon}
-      </div>
-      <div className="flex flex-col items-center gap-0.5">
-        <span className="text-[15px] font-semibold tabular-nums tracking-tight text-foreground">
-          {value}
-        </span>
-        <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-          {label}
-        </span>
-      </div>
+    <div className="flex flex-col gap-1">
+      <span className="text-[22px] font-bold leading-none tabular-nums tracking-tight text-primary sm:text-[28px]">
+        {value}
+      </span>
+      <span className="text-[11px] text-muted-foreground sm:text-[11.5px]">
+        {label}
+      </span>
     </div>
   );
 }
