@@ -8,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Database, FileText, Leaf, PhilippinePeso, TrendingDown, TrendingUp } from "lucide-react";
+import { Database, FileText, Leaf, PhilippinePeso, TrendingDown, TrendingUp, FileImage, FileVideo, FileCode, Presentation, FileIcon } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -40,6 +40,15 @@ const KIND_LABELS: Record<FileKind, string> = {
   image: "Images",
   video: "Videos",
   other: "Other",
+};
+
+const KIND_CONFIG: Record<FileKind, { Icon: React.ComponentType<{ className?: string; strokeWidth?: number }>, color: string, bg: string, hoverBg: string }> = {
+  pdf: { Icon: FileText, color: "text-red-500", bg: "bg-red-50/80", hoverBg: "group-hover:bg-red-100/80" },
+  docx: { Icon: FileText, color: "text-blue-500", bg: "bg-blue-50/80", hoverBg: "group-hover:bg-blue-100/80" },
+  pptx: { Icon: Presentation, color: "text-orange-500", bg: "bg-orange-50/80", hoverBg: "group-hover:bg-orange-100/80" },
+  image: { Icon: FileImage, color: "text-emerald-500", bg: "bg-emerald-50/80", hoverBg: "group-hover:bg-emerald-100/80" },
+  video: { Icon: FileVideo, color: "text-purple-500", bg: "bg-purple-50/80", hoverBg: "group-hover:bg-purple-100/80" },
+  other: { Icon: FileIcon, color: "text-slate-500", bg: "bg-slate-50/80", hoverBg: "group-hover:bg-slate-100/80" },
 };
 
 interface StatCardProps {
@@ -143,9 +152,18 @@ function BreakdownSkeleton() {
         <Skeleton className="h-4 w-24" />
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-[74px] rounded-lg" />
+            <div key={i} className="flex items-center gap-4 rounded-xl border border-border/70 bg-white p-4">
+               <Skeleton className="size-10 shrink-0 rounded-lg" />
+               <div className="flex flex-1 flex-col gap-2">
+                 <div className="flex items-center justify-between">
+                   <Skeleton className="h-4 w-16" />
+                   <Skeleton className="h-4 w-12" />
+                 </div>
+                 <Skeleton className="h-3 w-10" />
+               </div>
+            </div>
           ))}
         </div>
       </CardContent>
@@ -338,29 +356,43 @@ export default function ImpactPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
               {KIND_ORDER.map((kind) => {
                 const entry = stats.byKind[kind] ?? {
                   count: 0,
                   bytesSaved: 0,
                 };
+                const config = KIND_CONFIG[kind];
+                const Icon = config.Icon;
                 return (
                   <div
                     key={kind}
-                    className="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-[hsl(48_25%_98%)] p-3"
+                    className={cn(
+                      "group relative flex items-center gap-4 overflow-hidden rounded-xl border border-border/70 bg-white p-4",
+                      "transition-all duration-300 hover:border-primary/20 hover:shadow-sm"
+                    )}
                   >
-                    <div className="flex min-w-0 flex-col gap-1">
-                      <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                        {KIND_LABELS[kind]}
-                      </span>
-                      <span className="text-[12.5px] tabular-nums text-muted-foreground">
-                        {entry.count}{" "}
-                        {entry.count === 1 ? "file" : "files"}
-                      </span>
-                    </div>
-                    <span className="text-right text-[13px] font-medium tabular-nums text-foreground">
-                      {formatBytes(entry.bytesSaved)}
-                    </span>
+                     <div className={cn(
+                       "flex size-10 shrink-0 items-center justify-center rounded-lg transition-colors duration-200",
+                       config.bg,
+                       config.color,
+                       config.hoverBg
+                     )}>
+                        <Icon className="size-5" strokeWidth={1.8} />
+                     </div>
+                     <div className="flex flex-1 flex-col gap-0.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[12.5px] font-semibold tracking-tight text-foreground uppercase">
+                            {KIND_LABELS[kind]}
+                          </span>
+                          <span className="text-[14px] font-bold tabular-nums text-foreground">
+                            {formatBytes(entry.bytesSaved)}
+                          </span>
+                        </div>
+                        <span className="text-[12px] text-muted-foreground">
+                          {entry.count} {entry.count === 1 ? "file" : "files"}
+                        </span>
+                     </div>
                   </div>
                 );
               })}
