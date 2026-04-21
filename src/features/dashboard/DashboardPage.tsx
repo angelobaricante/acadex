@@ -9,7 +9,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import { deleteFolder, listFiles, listFolders, type ListFilesParams } from "@/lib/api";
+import { deleteFolder, listFiles, listFolders } from "@/lib/api";
 import type { ArchivedFile, FileKind, Folder } from "@/lib/types";
 import { useSessionStore, useUIStore } from "@/lib/store";
 import { useShellSearch } from "@/components/layout/AppShell";
@@ -95,9 +95,8 @@ export default function DashboardPage() {
   const [kind, setKind] = useState<KindFilter>("all");
   const [sort, setSort] = useState<SortKey>("recent");
   const [view, setView] = useState<ViewMode>("grid");
-  const [files, setFiles] = useState<ArchivedFile[] | null>(null);
   const [folders, setFolders] = useState<Folder[] | null>(null);
-  const [allFiles, setAllFiles] = useState<ArchivedFile[]>([]);
+  const [allFiles, setAllFiles] = useState<ArchivedFile[] | null>(null);
   const [activeFolder, setActiveFolder] = useState<Folder | null>(null);
 
   const ownerId = user?.role === "student" ? user.id : undefined;
@@ -132,7 +131,9 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [foldersVersion, uploadsVersion]);
 
-  // Fetch an unfiltered list (respecting ownerId) for folder file-count mapping.
+  // Fetch the full file list (respecting ownerId) once per data-change event.
+  // All filtering/sorting below is client-side so tab switches are instant —
+  // the API call only happens on user change, upload, delete, or folder move.
   useEffect(() => {
     let cancelled = false;
     listFiles({ ownerId }).then((result) => {
@@ -144,32 +145,37 @@ export default function DashboardPage() {
     };
   }, [ownerId, uploadsVersion, foldersVersion]);
 
-  // Fetch the displayed file list with all active filters.
-  // Keep the previous list visible during re-fetch so filter changes feel
-  // instantaneous instead of flashing skeletons. Only the first load clears
-  // to null (initial state).
-  const [refetching, setRefetching] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    setRefetching(true);
-    const params: ListFilesParams = {
-      query: search || undefined,
-      sort,
-      kind: kind === "all" ? undefined : kind,
-      ownerId,
-      // IMPORTANT: only pass folderId when a folder is active.
-      // Passing null would restrict to root-only files.
-      ...(activeFolder ? { folderId: activeFolder.id } : {}),
-    };
-    listFiles(params).then((result) => {
-      if (cancelled) return;
-      setFiles(result);
-      setRefetching(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [search, kind, sort, ownerId, uploadsVersion, foldersVersion, activeFolder]);
+  // Derive the displayed list via memo — no network calls on filter changes.
+  const files = useMemo<ArchivedFile[] | null>(() => {
+    if (allFiles === null) return null;
+    let result = allFiles;
+    if (activeFolder) {
+      result = result.filter((f) => f.folderId === activeFolder.id);
+    }
+    if (kind !== "all") {
+      result = result.filter((f) => f.kind === kind);
+    }
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (f) =>
+          f.name.toLowerCase().includes(q) ||
+          f.tags.some((t) => t.toLowerCase().includes(q))
+      );
+    }
+    const sorted = [...result];
+    if (sort === "recent") {
+      sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } else if (sort === "largest") {
+      sorted.sort((a, b) => b.originalBytes - a.originalBytes);
+    } else {
+      sorted.sort(
+        (a, b) =>
+          b.originalBytes - b.storedBytes - (a.originalBytes - a.storedBytes)
+      );
+    }
+    return sorted;
+  }, [allFiles, activeFolder, kind, search, sort]);
 
   const heading = user ? ROLE_HEADINGS[user.role] : ROLE_HEADINGS.student;
   const emptyCopy = user ? ROLE_EMPTY[user.role] : ROLE_EMPTY.student;
@@ -182,6 +188,7 @@ export default function DashboardPage() {
 
   const fileCountsByFolder = useMemo(() => {
     const counts: Record<string, number> = {};
+    if (!allFiles) return counts;
     for (const file of allFiles) {
       if (file.folderId) {
         counts[file.folderId] = (counts[file.folderId] ?? 0) + 1;
@@ -504,23 +511,13 @@ export default function DashboardPage() {
           }
         />
       ) : view === "grid" ? (
-        <div
-          className={cn(
-            "grid auto-rows-fr grid-cols-2 gap-3 transition-opacity duration-150 sm:grid-cols-3 lg:grid-cols-4",
-            refetching && "opacity-60"
-          )}
-        >
+        <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {files.map((file) => (
             <FileCard key={file.id} file={file} />
           ))}
         </div>
       ) : (
-        <div
-          className={cn(
-            "space-y-1.5 transition-opacity duration-150",
-            refetching && "opacity-60"
-          )}
-        >
+        <div className="space-y-1.5">
           {files.map((file) => (
             <FileRow key={file.id} file={file} />
           ))}
