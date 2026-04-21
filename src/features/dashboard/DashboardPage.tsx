@@ -252,7 +252,7 @@ export default function DashboardPage() {
         )}
       </header>
 
-      {/* Breadcrumb + New folder row */}
+      {/* Breadcrumb + folder actions row */}
       <div className="flex items-center justify-between gap-3">
         <nav
           aria-label="Folder breadcrumb"
@@ -274,34 +274,36 @@ export default function DashboardPage() {
               <span className="truncate font-semibold text-foreground">
                 {activeFolder.name}
               </span>
-              {canDeleteActiveFolder && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleDeleteActiveFolder}
-                  className="ml-1 h-7 gap-1.5 rounded-lg px-2 text-[12.5px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                >
-                  <Trash2 className="size-[13px]" strokeWidth={1.8} />
-                  <span>Delete folder</span>
-                </Button>
-              )}
             </>
           ) : (
             <span className="font-semibold text-foreground">All files</span>
           )}
         </nav>
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={openNewFolder}
-          className="h-8 shrink-0 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:text-foreground"
-        >
-          <Plus className="size-[14px]" strokeWidth={1.8} />
-          <span>New folder</span>
-        </Button>
+        <div className="flex shrink-0 items-center gap-1">
+          {canDeleteActiveFolder && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleDeleteActiveFolder}
+              className="h-8 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 className="size-[14px]" strokeWidth={1.8} />
+              <span>Delete folder</span>
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={openNewFolder}
+            className="h-8 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:text-foreground"
+          >
+            <Plus className="size-[14px]" strokeWidth={1.8} />
+            <span>New folder</span>
+          </Button>
+        </div>
       </div>
 
       {/* Folders strip */}
