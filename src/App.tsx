@@ -1,11 +1,13 @@
-import { Button } from "@/components/ui/button";
+import { RouterProvider } from "react-router-dom";
+import { router } from "./routes";
+import { Toaster } from "@/components/ui/sonner";
 
 function App() {
   return (
-    <div className="flex h-full items-center justify-center gap-4">
-      <h1 className="text-2xl font-semibold text-primary">AcaDex</h1>
-      <Button>Test</Button>
-    </div>
+    <>
+      <RouterProvider router={router} />
+      <Toaster />
+    </>
   );
 }
 
