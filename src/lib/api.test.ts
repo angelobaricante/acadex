@@ -1,5 +1,15 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { listFiles, getFile, mockSignIn, __resetApiStateForTests } from "./api";
+import {
+  listFiles,
+  getFile,
+  mockSignIn,
+  listFolders,
+  getFolder,
+  createFolder,
+  moveFileToFolder,
+  deleteFolder,
+  __resetApiStateForTests,
+} from "./api";
 
 beforeEach(() => {
   __resetApiStateForTests();
@@ -58,5 +68,59 @@ describe("mockSignIn", () => {
   it("returns the student user for 'student' role", async () => {
     const user = await mockSignIn("student");
     expect(user.role).toBe("student");
+  });
+});
+
+describe("folders", () => {
+  it("listFolders returns seeded folders", async () => {
+    const fs = await listFolders();
+    expect(fs.length).toBeGreaterThanOrEqual(4);
+    expect(fs.some((f) => f.id === "folder_cs101")).toBe(true);
+  });
+
+  it("getFolder throws when missing", async () => {
+    await expect(getFolder("nope")).rejects.toMatchObject({ code: "not_found" });
+  });
+
+  it("createFolder adds to the list", async () => {
+    const before = (await listFolders()).length;
+    const f = await createFolder("New Folder");
+    expect(f.name).toBe("New Folder");
+    const after = await listFolders();
+    expect(after.length).toBe(before + 1);
+    expect(after.some((x) => x.id === f.id)).toBe(true);
+  });
+
+  it("listFiles filters by folderId", async () => {
+    const files = await listFiles({ folderId: "folder_cs101" });
+    expect(files.length).toBeGreaterThan(0);
+    expect(files.every((f) => f.folderId === "folder_cs101")).toBe(true);
+  });
+
+  it("listFiles filters by folderId === null (root)", async () => {
+    const files = await listFiles({ folderId: null });
+    expect(files.every((f) => !f.folderId)).toBe(true);
+  });
+
+  it("moveFileToFolder updates the file", async () => {
+    const moved = await moveFileToFolder("file_008", "folder_admin");
+    expect(moved.folderId).toBe("folder_admin");
+    const filesInAdmin = await listFiles({ folderId: "folder_admin" });
+    expect(filesInAdmin.some((f) => f.id === "file_008")).toBe(true);
+  });
+
+  it("moveFileToFolder(null) moves file to root", async () => {
+    await moveFileToFolder("file_001", null);
+    const root = await listFiles({ folderId: null });
+    expect(root.some((f) => f.id === "file_001")).toBe(true);
+  });
+
+  it("deleteFolder moves its files to root", async () => {
+    await deleteFolder("folder_labs");
+    const folders = await listFolders();
+    expect(folders.some((f) => f.id === "folder_labs")).toBe(false);
+    const rootFiles = await listFiles({ folderId: null });
+    // file_011, file_012, file_007 were in folder_labs originally
+    expect(rootFiles.some((f) => f.id === "file_011")).toBe(true);
   });
 });

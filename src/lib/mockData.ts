@@ -1,5 +1,6 @@
 import type {
   ArchivedFile,
+  Folder,
   ImpactStats,
   ShareLink,
   User,
@@ -78,6 +79,32 @@ export const mockFiles: ArchivedFile[] = [
   f("file_019", "Exam_Review.pdf", "pdf", "application/pdf", "faculty_cruz", 22_020_096, 3_670_016, ["CS101", "Exam", "Review"], "2026-04-17T11:00:00Z", "sample.pdf"),
   f("file_020", "Announcement.pdf", "pdf", "application/pdf", "admin_reyes", 524_288, 65_536, ["Admin", "Announcement"], "2026-04-20T08:00:00Z", "sample.pdf"),
 ];
+
+export const mockFolders: Folder[] = [
+  { id: "folder_cs101", name: "CS101 Lectures", ownerId: "faculty_cruz", color: "green", createdAt: "2026-04-01T08:00:00Z" },
+  { id: "folder_labs", name: "CS101 Labs", ownerId: "faculty_cruz", color: "amber", createdAt: "2026-04-01T08:00:00Z" },
+  { id: "folder_thesis", name: "Thesis", ownerId: "student_maria", color: "violet", createdAt: "2026-04-01T08:00:00Z" },
+  { id: "folder_admin", name: "Admin Announcements", ownerId: "admin_reyes", color: "blue", createdAt: "2026-03-15T08:00:00Z" },
+];
+
+const folderAssignments: Record<string, string> = {
+  file_001: "folder_cs101",
+  file_002: "folder_cs101",
+  file_003: "folder_cs101",
+  file_016: "folder_cs101",
+  file_019: "folder_cs101",
+  file_011: "folder_labs",
+  file_012: "folder_labs",
+  file_007: "folder_labs",
+  file_004: "folder_thesis",
+  file_013: "folder_thesis",
+  file_010: "folder_admin",
+  file_020: "folder_admin",
+};
+
+for (const file of mockFiles) {
+  file.folderId = folderAssignments[file.id] ?? null;
+}
 
 export const mockShareLinks: ShareLink[] = [
   {

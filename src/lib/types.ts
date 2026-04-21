@@ -24,6 +24,17 @@ export interface ArchivedFile {
   updatedAt: string; // ISO
   previewUrl: string;
   downloadUrl: string;
+  folderId?: string | null;
+}
+
+export type FolderColor = "green" | "amber" | "blue" | "violet" | "neutral";
+
+export interface Folder {
+  id: string;
+  name: string;
+  ownerId: string;
+  color: FolderColor;
+  createdAt: string; // ISO
 }
 
 export type SharePermission = "view" | "view_and_download";

@@ -1,6 +1,8 @@
 import type {
   ArchivedFile,
   FileKind,
+  Folder,
+  FolderColor,
   ImpactStats,
   Role,
   ShareLink,
@@ -9,6 +11,7 @@ import type {
 } from "./types";
 import {
   mockFiles,
+  mockFolders,
   mockImpact,
   mockShareLinks,
   mockUsers,
@@ -27,13 +30,15 @@ function apiError(code: string, message: string): { code: string; message: strin
 }
 
 // --- In-memory state (resettable for tests) ---
-let files: ArchivedFile[] = [...mockFiles];
+let files: ArchivedFile[] = mockFiles.map((f) => ({ ...f }));
 let shareLinks: ShareLink[] = [...mockShareLinks];
+let folders: Folder[] = [...mockFolders];
 let currentUser: User | null = null;
 
 export function __resetApiStateForTests(): void {
-  files = [...mockFiles];
+  files = mockFiles.map((f) => ({ ...f }));
   shareLinks = [...mockShareLinks];
+  folders = [...mockFolders];
   currentUser = null;
 }
 
@@ -66,6 +71,7 @@ export interface ListFilesParams {
   kind?: FileKind;
   tag?: string;
   ownerId?: string;
+  folderId?: string | null;
   sort?: "recent" | "largest" | "most_saved";
 }
 
@@ -74,6 +80,11 @@ export async function listFiles(params: ListFilesParams = {}): Promise<ArchivedF
   let result = [...files];
   if (params.kind) result = result.filter((f) => f.kind === params.kind);
   if (params.ownerId) result = result.filter((f) => f.ownerId === params.ownerId);
+  if (params.folderId === null) {
+    result = result.filter((f) => f.folderId === null || f.folderId === undefined);
+  } else if (typeof params.folderId === "string") {
+    result = result.filter((f) => f.folderId === params.folderId);
+  }
   if (params.tag) {
     const t = params.tag.toLowerCase();
     result = result.filter((f) => f.tags.some((tag) => tag.toLowerCase() === t));
@@ -183,6 +194,56 @@ export async function revokeShareLink(shareId: string): Promise<void> {
   const before = shareLinks.length;
   shareLinks = shareLinks.filter((l) => l.id !== shareId);
   if (shareLinks.length === before) throw apiError("not_found", `Share ${shareId} not found`);
+}
+
+// --- Folders ---
+export async function listFolders(): Promise<Folder[]> {
+  await sleep();
+  return [...folders].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function getFolder(id: string): Promise<Folder> {
+  await sleep();
+  const folder = folders.find((f) => f.id === id);
+  if (!folder) throw apiError("not_found", `Folder ${id} not found`);
+  return folder;
+}
+
+export async function createFolder(name: string, color?: FolderColor): Promise<Folder> {
+  await sleep();
+  const folder: Folder = {
+    id: `folder_${Math.random().toString(36).slice(2, 10)}`,
+    name,
+    ownerId: currentUser?.id ?? "admin_reyes",
+    color: color ?? "green",
+    createdAt: new Date().toISOString(),
+  };
+  folders = [folder, ...folders];
+  return folder;
+}
+
+export async function moveFileToFolder(
+  fileId: string,
+  folderId: string | null
+): Promise<ArchivedFile> {
+  await sleep();
+  const file = files.find((f) => f.id === fileId);
+  if (!file) throw apiError("not_found", `File ${fileId} not found`);
+  if (folderId !== null && !folders.find((f) => f.id === folderId)) {
+    throw apiError("not_found", `Folder ${folderId} not found`);
+  }
+  file.folderId = folderId;
+  return file;
+}
+
+export async function deleteFolder(id: string): Promise<void> {
+  await sleep();
+  const before = folders.length;
+  folders = folders.filter((f) => f.id !== id);
+  if (folders.length === before) throw apiError("not_found", `Folder ${id} not found`);
+  for (const file of files) {
+    if (file.folderId === id) file.folderId = null;
+  }
 }
 
 // --- Impact ---
