@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpDown,
+  ChevronRight,
   FolderOpen,
   LayoutGrid,
   List,
+  Plus,
+  Trash2,
   Upload,
 } from "lucide-react";
-import { listFiles, type ListFilesParams } from "@/lib/api";
-import type { ArchivedFile, FileKind } from "@/lib/types";
+import { deleteFolder, listFiles, listFolders, type ListFilesParams } from "@/lib/api";
+import type { ArchivedFile, FileKind, Folder } from "@/lib/types";
 import { useSessionStore, useUIStore } from "@/lib/store";
 import { useShellSearch } from "@/components/layout/AppShell";
 import FileCard from "@/components/shared/FileCard";
 import FileRow from "@/components/shared/FileRow";
+import FolderTile from "@/components/shared/FolderTile";
 import EmptyState from "@/components/shared/EmptyState";
 import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -23,6 +27,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type KindFilter = "all" | FileKind;
 type SortKey = "recent" | "largest" | "most_saved";
@@ -80,17 +85,53 @@ const ROLE_EMPTY = {
 export default function DashboardPage() {
   const user = useSessionStore((s) => s.user);
   const openUpload = useUIStore((s) => s.openUpload);
+  const openNewFolder = useUIStore((s) => s.openNewFolder);
   const uploadsVersion = useUIStore((s) => s.uploadsVersion);
+  const foldersVersion = useUIStore((s) => s.foldersVersion);
+  const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
   const { search } = useShellSearch();
 
   const [kind, setKind] = useState<KindFilter>("all");
   const [sort, setSort] = useState<SortKey>("recent");
   const [view, setView] = useState<ViewMode>("grid");
   const [files, setFiles] = useState<ArchivedFile[] | null>(null);
+  const [folders, setFolders] = useState<Folder[] | null>(null);
+  const [allFiles, setAllFiles] = useState<ArchivedFile[]>([]);
+  const [activeFolder, setActiveFolder] = useState<Folder | null>(null);
 
-  const ownerId =
-    user?.role === "student" ? user.id : undefined;
+  const ownerId = user?.role === "student" ? user.id : undefined;
 
+  // Fetch folders list on mount / when they change.
+  useEffect(() => {
+    let cancelled = false;
+    listFolders().then((result) => {
+      if (cancelled) return;
+      setFolders(result);
+      // If the active folder no longer exists, clear it.
+      if (activeFolder && !result.find((f) => f.id === activeFolder.id)) {
+        setActiveFolder(null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // activeFolder intentionally not a dep: we only want to reconcile when folders change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foldersVersion, uploadsVersion]);
+
+  // Fetch an unfiltered list (respecting ownerId) for folder file-count mapping.
+  useEffect(() => {
+    let cancelled = false;
+    listFiles({ ownerId }).then((result) => {
+      if (cancelled) return;
+      setAllFiles(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ownerId, uploadsVersion, foldersVersion]);
+
+  // Fetch the displayed file list with all active filters.
   useEffect(() => {
     let cancelled = false;
     setFiles(null);
@@ -99,6 +140,9 @@ export default function DashboardPage() {
       sort,
       kind: kind === "all" ? undefined : kind,
       ownerId,
+      // IMPORTANT: only pass folderId when a folder is active.
+      // Passing null would restrict to root-only files.
+      ...(activeFolder ? { folderId: activeFolder.id } : {}),
     };
     listFiles(params).then((result) => {
       if (cancelled) return;
@@ -107,7 +151,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [search, kind, sort, ownerId, uploadsVersion]);
+  }, [search, kind, sort, ownerId, uploadsVersion, foldersVersion, activeFolder]);
 
   const heading = user ? ROLE_HEADINGS[user.role] : ROLE_HEADINGS.student;
   const emptyCopy = user ? ROLE_EMPTY[user.role] : ROLE_EMPTY.student;
@@ -118,10 +162,51 @@ export default function DashboardPage() {
     return files.reduce((acc, f) => acc + (f.originalBytes - f.storedBytes), 0);
   }, [files]);
 
+  const fileCountsByFolder = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const file of allFiles) {
+      if (file.folderId) {
+        counts[file.folderId] = (counts[file.folderId] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [allFiles]);
+
   const sortLabel =
     SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Most recent";
   const kindLabel =
     KIND_OPTIONS.find((o) => o.value === kind)?.label ?? "All types";
+
+  const showFoldersStrip =
+    activeFolder === null && !search && kind === "all" && folders && folders.length > 0;
+
+  const canDeleteActiveFolder =
+    activeFolder !== null &&
+    user !== null &&
+    (user.role === "admin" || activeFolder.ownerId === user.id);
+
+  function handleOpenFolder(folder: Folder) {
+    setActiveFolder(folder);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
+  async function handleDeleteActiveFolder() {
+    if (!activeFolder) return;
+    const confirmed = window.confirm(
+      `Delete folder '${activeFolder.name}'? Its files will move to All files.`
+    );
+    if (!confirmed) return;
+    try {
+      await deleteFolder(activeFolder.id);
+      toast.success("Folder deleted");
+      setActiveFolder(null);
+      bumpFoldersVersion();
+    } catch {
+      toast.error("Couldn't delete folder");
+    }
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-8 md:py-10">
@@ -148,6 +233,77 @@ export default function DashboardPage() {
           </p>
         )}
       </header>
+
+      {/* Breadcrumb + New folder row */}
+      <div className="flex items-center justify-between gap-3">
+        <nav
+          aria-label="Folder breadcrumb"
+          className="flex min-w-0 items-center gap-1.5 text-[13.5px]"
+        >
+          {activeFolder ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setActiveFolder(null)}
+                className="text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              >
+                All files
+              </button>
+              <ChevronRight
+                className="size-[14px] shrink-0 text-muted-foreground/60"
+                strokeWidth={1.8}
+              />
+              <span className="truncate font-semibold text-foreground">
+                {activeFolder.name}
+              </span>
+              {canDeleteActiveFolder && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleDeleteActiveFolder}
+                  className="ml-1 h-7 gap-1.5 rounded-lg px-2 text-[12.5px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <Trash2 className="size-[13px]" strokeWidth={1.8} />
+                  <span>Delete folder</span>
+                </Button>
+              )}
+            </>
+          ) : (
+            <span className="font-semibold text-foreground">All files</span>
+          )}
+        </nav>
+
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={openNewFolder}
+          className="h-8 shrink-0 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:text-foreground"
+        >
+          <Plus className="size-[14px]" strokeWidth={1.8} />
+          <span>New folder</span>
+        </Button>
+      </div>
+
+      {/* Folders strip */}
+      {showFoldersStrip && (
+        <section className="flex flex-col gap-2">
+          <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            Folders
+          </span>
+          <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+            {folders!.map((folder) => (
+              <FolderTile
+                key={folder.id}
+                folder={folder}
+                fileCount={fileCountsByFolder[folder.id] ?? 0}
+                onClick={() => handleOpenFolder(folder)}
+              />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-2">
@@ -296,14 +452,18 @@ export default function DashboardPage() {
         <EmptyState
           icon={<FolderOpen />}
           title={
-            filtersActive
-              ? "No files match your filters"
-              : emptyCopy.title
+            activeFolder
+              ? `Nothing in '${activeFolder.name}' yet`
+              : filtersActive
+                ? "No files match your filters"
+                : emptyCopy.title
           }
           description={
-            filtersActive
-              ? "Try clearing the search or switching file type."
-              : emptyCopy.description
+            activeFolder
+              ? "Upload a file or move existing files into this folder."
+              : filtersActive
+                ? "Try clearing the search or switching file type."
+                : emptyCopy.description
           }
           action={
             <Button
@@ -313,7 +473,13 @@ export default function DashboardPage() {
               className="h-8 gap-1.5 rounded-lg px-3 text-[13px]"
             >
               <Upload className="size-[14px]" />
-              <span>{filtersActive ? "Upload a file" : emptyCopy.cta}</span>
+              <span>
+                {activeFolder
+                  ? "Upload a file"
+                  : filtersActive
+                    ? "Upload a file"
+                    : emptyCopy.cta}
+              </span>
             </Button>
           }
         />
