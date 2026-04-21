@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
 import AuthGuard from "@/components/layout/AuthGuard";
+import AppShell from "@/components/layout/AppShell";
 import LoginPage from "@/features/auth/LoginPage";
 import DashboardPage from "@/features/dashboard/DashboardPage";
 import ViewerPage from "@/features/viewer/ViewerPage";
@@ -13,9 +14,14 @@ export const router = createBrowserRouter([
   {
     element: <AuthGuard />,
     children: [
-      { path: "/", element: <DashboardPage /> },
-      { path: "/file/:id", element: <ViewerPage /> },
-      { path: "/impact", element: <ImpactPage /> },
+      {
+        element: <AppShell />,
+        children: [
+          { path: "/", element: <DashboardPage /> },
+          { path: "/file/:id", element: <ViewerPage /> },
+          { path: "/impact", element: <ImpactPage /> },
+        ],
+      },
     ],
   },
   { path: "*", element: <NotFoundPage /> },
