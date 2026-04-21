@@ -4,6 +4,7 @@ import {
   FileImage,
   FileText,
   FileVideo,
+  Presentation,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -20,24 +21,27 @@ interface FileRowProps {
   onSelectChange?: (checked: boolean) => void;
 }
 
-function iconFor(kind: FileKind): LucideIcon {
+function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: string } {
   switch (kind) {
     case "pdf":
+      return { Icon: FileText, color: "text-red-500", bg: "bg-red-50/80" };
     case "docx":
+      return { Icon: FileText, color: "text-blue-500", bg: "bg-blue-50/80" };
     case "pptx":
-      return FileText;
+      return { Icon: Presentation, color: "text-orange-500", bg: "bg-orange-50/80" };
     case "image":
-      return FileImage;
+      return { Icon: FileImage, color: "text-emerald-500", bg: "bg-emerald-50/80" };
     case "video":
-      return FileVideo;
+      return { Icon: FileVideo, color: "text-purple-500", bg: "bg-purple-50/80" };
     default:
-      return FileIcon;
+      return { Icon: FileIcon, color: "text-slate-500", bg: "bg-slate-50/80" };
   }
 }
 
 export default function FileRow({ file, selected, onSelectChange }: FileRowProps) {
   const navigate = useNavigate();
-  const Icon = iconFor(file.kind);
+  const config = fileTypeConfig(file.kind);
+  const Icon = config.Icon;
   const visibleTags = file.tags.slice(0, 2);
   const overflow = file.tags.length - visibleTags.length;
 
@@ -88,8 +92,8 @@ export default function FileRow({ file, selected, onSelectChange }: FileRowProps
       >
       <Icon
         aria-hidden="true"
-        strokeWidth={1.6}
-        className="size-6 text-muted-foreground/80 transition-colors duration-150 group-hover/file-row:text-primary"
+        strokeWidth={1.8}
+        className={cn("size-5", config.color)}
       />
 
       <div className="flex min-w-0 items-center gap-2">

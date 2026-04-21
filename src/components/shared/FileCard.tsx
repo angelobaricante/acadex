@@ -4,6 +4,7 @@ import {
   FileImage,
   FileText,
   FileVideo,
+  Presentation,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -20,24 +21,27 @@ interface FileCardProps {
   onSelectChange?: (checked: boolean) => void;
 }
 
-function iconFor(kind: FileKind): LucideIcon {
+function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: string } {
   switch (kind) {
     case "pdf":
+      return { Icon: FileText, color: "text-red-500", bg: "bg-red-50/80" };
     case "docx":
+      return { Icon: FileText, color: "text-blue-500", bg: "bg-blue-50/80" };
     case "pptx":
-      return FileText;
+      return { Icon: Presentation, color: "text-orange-500", bg: "bg-orange-50/80" };
     case "image":
-      return FileImage;
+      return { Icon: FileImage, color: "text-emerald-500", bg: "bg-emerald-50/80" };
     case "video":
-      return FileVideo;
+      return { Icon: FileVideo, color: "text-purple-500", bg: "bg-purple-50/80" };
     default:
-      return FileIcon;
+      return { Icon: FileIcon, color: "text-slate-500", bg: "bg-slate-50/80" };
   }
 }
 
 export default function FileCard({ file, selected, onSelectChange }: FileCardProps) {
   const navigate = useNavigate();
-  const Icon = iconFor(file.kind);
+  const config = fileTypeConfig(file.kind);
+  const Icon = config.Icon;
   const visibleTags = file.tags.slice(0, 1);
   const overflow = file.tags.length - visibleTags.length;
 
@@ -97,8 +101,12 @@ export default function FileCard({ file, selected, onSelectChange }: FileCardPro
             "[background-size:16px_16px]"
           )}
         />
-        <div className="relative flex size-11 items-center justify-center rounded-lg bg-white/80 text-muted-foreground shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_2px_rgba(16,24,40,0.04)] ring-1 ring-border/70 transition-colors duration-200 group-hover/file-card:text-primary">
-          <Icon className="size-[20px]" strokeWidth={1.6} />
+        <div className={cn(
+          "relative flex size-11 items-center justify-center rounded-lg shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_2px_rgba(16,24,40,0.04)] ring-1 ring-border/70 transition-colors duration-200",
+          config.bg,
+          config.color
+        )}>
+          <Icon className="size-[20px]" strokeWidth={1.8} />
         </div>
       </div>
 

@@ -138,7 +138,7 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-52 p-1"
+        className="w-60 p-1"
         onClick={(e) => e.stopPropagation()}
       >
         <DropdownMenuItem
