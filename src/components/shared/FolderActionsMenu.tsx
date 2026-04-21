@@ -1,4 +1,5 @@
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import ConfirmDialog from "./ConfirmDialog";
 import {
   Download,
   Edit2,
@@ -28,6 +29,7 @@ interface FolderActionsMenuProps {
 
 export default function FolderActionsMenu({ folder, onOpen }: FolderActionsMenuProps) {
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   async function handleCopyLink() {
     toast.success("Folder link copied");
@@ -43,12 +45,16 @@ export default function FolderActionsMenu({ folder, onOpen }: FolderActionsMenuP
     }
   }
 
+  function requestDelete() {
+    setConfirmOpen(true);
+  }
+
   const stopProp = {
     onClick: (e: React.MouseEvent) => e.stopPropagation(),
     onMouseDown: (e: React.MouseEvent) => e.preventDefault(),
   };
 
-  return (
+  return (<>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
@@ -100,7 +106,7 @@ export default function FolderActionsMenu({ folder, onOpen }: FolderActionsMenuP
 
         <DropdownMenuItem
           variant="destructive"
-          onSelect={() => void handleDelete()}
+          onSelect={() => requestDelete()}
           className="gap-2 px-2 py-1.5 text-[13px]"
         >
           <Trash2 className="size-[14px]" strokeWidth={1.8} />
@@ -108,5 +114,14 @@ export default function FolderActionsMenu({ folder, onOpen }: FolderActionsMenuP
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
+
+    <ConfirmDialog
+      open={confirmOpen}
+      onOpenChange={setConfirmOpen}
+      title="Delete folder?"
+      description={`"${folder.name}" will be permanently deleted. Files inside will be moved to All files.`}
+      confirmLabel="Delete folder"
+      onConfirm={() => void handleDelete()}
+    />
+  </>);
 }

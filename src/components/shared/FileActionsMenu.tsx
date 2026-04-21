@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ConfirmDialog from "./ConfirmDialog";
 import { useNavigate } from "react-router-dom";
 import {
   Check,
@@ -42,6 +43,7 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
   const [folders, setFolders] = useState<Folder[] | null>(null);
   const [loadingFolders, setLoadingFolders] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   async function ensureFoldersLoaded() {
     if (folders !== null || loadingFolders) return;
@@ -96,6 +98,10 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
     }
   }
 
+  function requestDelete() {
+    setConfirmOpen(true);
+  }
+
   // Prevent clicks inside the menu trigger from bubbling to the parent Link.
   const stopLink = {
     onClick: (e: React.MouseEvent) => e.stopPropagation(),
@@ -118,7 +124,7 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
           "transition-opacity duration-150"
         );
 
-  return (
+  return (<>
     <DropdownMenu
       onOpenChange={(open) => {
         if (open) void ensureFoldersLoaded();
@@ -210,7 +216,7 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
 
         <DropdownMenuItem
           variant="destructive"
-          onSelect={() => void handleDelete()}
+          onSelect={() => requestDelete()}
           className="gap-2 px-2 py-1.5 text-[13px]"
         >
           <Trash2 className="size-[14px]" strokeWidth={1.8} />
@@ -218,5 +224,14 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
+
+    <ConfirmDialog
+      open={confirmOpen}
+      onOpenChange={setConfirmOpen}
+      title="Delete file?"
+      description={`"${file.name}" will be permanently deleted and cannot be recovered.`}
+      confirmLabel="Delete file"
+      onConfirm={() => void handleDelete()}
+    />
+  </>);
 }

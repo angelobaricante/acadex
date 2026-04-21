@@ -18,6 +18,7 @@ import {
   LayoutGrid,
   List,
   Loader2,
+  MoreHorizontal,
   Plus,
   Tags,
   Trash2,
@@ -34,12 +35,14 @@ import FileCard from "@/components/shared/FileCard";
 import FileRow from "@/components/shared/FileRow";
 import FolderTile from "@/components/shared/FolderTile";
 import EmptyState from "@/components/shared/EmptyState";
+import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -121,6 +124,8 @@ export default function DashboardPage() {
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
   const observer = useRef<IntersectionObserver | null>(null);
+  const [confirmDeleteFolderOpen, setConfirmDeleteFolderOpen] = useState(false);
+  const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
 
   const totalSelected = selectedFileIds.size + selectedFolderIds.size;
 
@@ -252,10 +257,6 @@ export default function DashboardPage() {
 
   async function handleDeleteActiveFolder() {
     if (!activeFolder) return;
-    const confirmed = window.confirm(
-      `Delete folder '${activeFolder.name}'? Its files will move to All files.`
-    );
-    if (!confirmed) return;
     try {
       await deleteFolder(activeFolder.id);
       toast.success("Folder deleted");
@@ -316,8 +317,6 @@ export default function DashboardPage() {
 
   async function handleBulkDelete() {
     if (totalSelected === 0) return;
-    const confirmed = window.confirm(`Delete ${totalSelected} selected items?`);
-    if (!confirmed) return;
     try {
       await Promise.all([
         ...Array.from(selectedFileIds).map((id) => deleteFile(id)),
@@ -415,42 +414,51 @@ export default function DashboardPage() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-1">
-          {activeFolder && (
-            <>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => toast.info("Rename coming soon")}
-                className="h-8 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:text-foreground"
-              >
-                <Edit2 className="size-[14px]" strokeWidth={1.8} />
-                <span>Rename</span>
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => toast.info("Download coming soon")}
-                className="h-8 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:text-foreground"
-              >
-                <Download className="size-[14px]" strokeWidth={1.8} />
-                <span>Download</span>
-              </Button>
-            </>
-          )}
-          {canDeleteActiveFolder && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleDeleteActiveFolder}
-              className="h-8 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-            >
-              <Trash2 className="size-[14px]" strokeWidth={1.8} />
-              <span>Delete folder</span>
-            </Button>
-          )}
+          {activeFolder ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:text-foreground"
+                >
+                  <MoreHorizontal className="size-[14px]" strokeWidth={1.8} />
+                  <span>Actions</span>
+                  <ChevronDown className="size-[13px] text-muted-foreground/70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 p-1">
+                <DropdownMenuItem
+                  onSelect={() => toast.info("Rename coming soon")}
+                  className="gap-2 px-2 py-1.5 text-[13px]"
+                >
+                  <Edit2 className="size-[14px] text-muted-foreground" strokeWidth={1.8} />
+                  <span>Rename</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onSelect={() => toast.info("Download coming soon")}
+                  className="gap-2 px-2 py-1.5 text-[13px]"
+                >
+                  <Download className="size-[14px] text-muted-foreground" strokeWidth={1.8} />
+                  <span>Download</span>
+                </DropdownMenuItem>
+                {canDeleteActiveFolder && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={() => setConfirmDeleteFolderOpen(true)}
+                      className="gap-2 px-2 py-1.5 text-[13px]"
+                    >
+                      <Trash2 className="size-[14px]" strokeWidth={1.8} />
+                      <span>Delete folder</span>
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
           <Button
             type="button"
             variant="ghost"
@@ -638,7 +646,7 @@ export default function DashboardPage() {
               type="button"
               size="sm"
               onClick={openUpload}
-              className="h-8 gap-1.5 rounded-lg px-3 text-[13px]"
+              className="h-8 gap-1.5 rounded-lg border-transparent bg-[#2d8a56] px-3 text-[13px] font-medium text-white hover:bg-[#247045]"
             >
               <Upload className="size-[14px]" />
               <span>
@@ -724,7 +732,7 @@ export default function DashboardPage() {
             <Button
               size="sm"
               variant="ghost"
-              onClick={handleBulkDelete}
+              onClick={() => setConfirmBulkDeleteOpen(true)}
               className="h-8 gap-1.5 rounded-full px-3 text-[13px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
             >
               <Trash2 className="size-[14px]" />
@@ -743,6 +751,24 @@ export default function DashboardPage() {
         </div>
         </div>
       )}
+
+      {/* Confirmation modals */}
+      <ConfirmDialog
+        open={confirmDeleteFolderOpen}
+        onOpenChange={setConfirmDeleteFolderOpen}
+        title="Delete folder?"
+        description={`"${activeFolder?.name}" will be permanently deleted. Files inside will be moved to All files.`}
+        confirmLabel="Delete folder"
+        onConfirm={() => void handleDeleteActiveFolder()}
+      />
+      <ConfirmDialog
+        open={confirmBulkDeleteOpen}
+        onOpenChange={setConfirmBulkDeleteOpen}
+        title={`Delete ${totalSelected} ${totalSelected === 1 ? "item" : "items"}?`}
+        description="Selected files and folders will be permanently deleted and cannot be recovered."
+        confirmLabel="Delete all"
+        onConfirm={() => void handleBulkDelete()}
+      />
     </div>
   );
 }
