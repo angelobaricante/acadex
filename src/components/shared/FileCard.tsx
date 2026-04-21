@@ -34,16 +34,16 @@ function iconFor(kind: FileKind): LucideIcon {
 
 export default function FileCard({ file }: FileCardProps) {
   const Icon = iconFor(file.kind);
-  const visibleTags = file.tags.slice(0, 2);
+  const visibleTags = file.tags.slice(0, 1);
   const overflow = file.tags.length - visibleTags.length;
 
   return (
-    <div className="group/file-card relative">
+    <div className="group/file-card relative h-full">
       <Link
       to={`/file/${file.id}`}
       data-slot="file-card"
       className={cn(
-        "relative flex flex-col overflow-hidden rounded-xl border border-border/70 bg-card",
+        "relative flex h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-card",
         "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
         "transition-[transform,box-shadow,border-color] duration-200 ease-out",
         "hover:-translate-y-px hover:border-primary/20",
@@ -79,7 +79,7 @@ export default function FileCard({ file }: FileCardProps) {
 
       {/* Body */}
       <div className="flex flex-1 flex-col gap-2.5 p-3">
-        <p className="line-clamp-2 text-[14px] font-medium leading-snug text-foreground">
+        <p className="line-clamp-2 min-h-[2.55em] text-[14px] font-medium leading-snug text-foreground">
           {file.name}
         </p>
 
@@ -88,19 +88,19 @@ export default function FileCard({ file }: FileCardProps) {
           <span>{formatDate(file.createdAt)}</span>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-          <SavingsBadge ratio={file.compressionRatio} />
+        <div className="mt-auto flex min-w-0 flex-nowrap items-center gap-1.5 overflow-hidden pt-0.5">
+          <SavingsBadge ratio={file.compressionRatio} className="shrink-0" />
           {visibleTags.map((tag) => (
             <Badge
               key={tag}
               variant="secondary"
-              className="h-5 px-1.5 text-[11px] font-normal text-muted-foreground"
+              className="h-5 min-w-0 max-w-[88px] truncate px-1.5 text-[11px] font-normal text-muted-foreground"
             >
               {tag}
             </Badge>
           ))}
           {overflow > 0 && (
-            <span className="text-[11px] font-medium text-muted-foreground/80 tabular-nums">
+            <span className="shrink-0 text-[11px] font-medium text-muted-foreground/80 tabular-nums">
               +{overflow}
             </span>
           )}

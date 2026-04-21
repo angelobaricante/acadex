@@ -145,9 +145,13 @@ export default function DashboardPage() {
   }, [ownerId, uploadsVersion, foldersVersion]);
 
   // Fetch the displayed file list with all active filters.
+  // Keep the previous list visible during re-fetch so filter changes feel
+  // instantaneous instead of flashing skeletons. Only the first load clears
+  // to null (initial state).
+  const [refetching, setRefetching] = useState(false);
   useEffect(() => {
     let cancelled = false;
-    setFiles(null);
+    setRefetching(true);
     const params: ListFilesParams = {
       query: search || undefined,
       sort,
@@ -160,6 +164,7 @@ export default function DashboardPage() {
     listFiles(params).then((result) => {
       if (cancelled) return;
       setFiles(result);
+      setRefetching(false);
     });
     return () => {
       cancelled = true;
@@ -191,7 +196,7 @@ export default function DashboardPage() {
     KIND_OPTIONS.find((o) => o.value === kind)?.label ?? "All types";
 
   const showFoldersStrip =
-    activeFolder === null && !search && kind === "all" && folders && folders.length > 0;
+    activeFolder === null && folders !== null && folders.length > 0;
 
   const canDeleteActiveFolder =
     activeFolder !== null &&
@@ -446,7 +451,7 @@ export default function DashboardPage() {
       {/* Results */}
       {files === null ? (
         view === "grid" ? (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton
                 key={i}
@@ -497,13 +502,23 @@ export default function DashboardPage() {
           }
         />
       ) : view === "grid" ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div
+          className={cn(
+            "grid auto-rows-fr grid-cols-2 gap-3 transition-opacity duration-150 sm:grid-cols-3 lg:grid-cols-4",
+            refetching && "opacity-60"
+          )}
+        >
           {files.map((file) => (
             <FileCard key={file.id} file={file} />
           ))}
         </div>
       ) : (
-        <div className="space-y-1.5">
+        <div
+          className={cn(
+            "space-y-1.5 transition-opacity duration-150",
+            refetching && "opacity-60"
+          )}
+        >
           {files.map((file) => (
             <FileRow key={file.id} file={file} />
           ))}
