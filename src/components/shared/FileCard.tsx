@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   FileIcon,
   FileImage,
@@ -7,6 +7,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatBytes, formatDate } from "@/lib/format";
 import type { ArchivedFile, FileKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -15,6 +16,8 @@ import FileActionsMenu from "./FileActionsMenu";
 
 interface FileCardProps {
   file: ArchivedFile;
+  selected?: boolean;
+  onSelectChange?: (checked: boolean) => void;
 }
 
 function iconFor(kind: FileKind): LucideIcon {
@@ -32,29 +35,52 @@ function iconFor(kind: FileKind): LucideIcon {
   }
 }
 
-export default function FileCard({ file }: FileCardProps) {
+export default function FileCard({ file, selected, onSelectChange }: FileCardProps) {
+  const navigate = useNavigate();
   const Icon = iconFor(file.kind);
   const visibleTags = file.tags.slice(0, 1);
   const overflow = file.tags.length - visibleTags.length;
 
+  const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selected) {
+      onSelectChange?.(true);
+    } else {
+      navigate(`/file/${file.id}`);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      handleClick(e);
+    }
+  };
+
   return (
     <div className="group/file-card relative h-full">
-      <Link
-      to={`/file/${file.id}`}
-      data-slot="file-card"
-      className={cn(
-        "relative flex h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-card",
-        "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
-        "transition-[border-color] duration-200 ease-out",
-        "hover:border-primary/20",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-      )}
-    >
-      {/* Top hairline — tints primary on hover */}
-      <span
-        aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-px bg-border/80 transition-colors duration-200 group-hover/file-card:bg-primary/40"
-      />
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        data-slot="file-card"
+        className={cn(
+          "relative flex h-full flex-col overflow-hidden rounded-xl border bg-card",
+          "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
+          "transition-[border-color,background-color] duration-200 ease-out",
+          selected ? "border-primary/40 bg-primary/[0.02]" : "border-border/70 hover:border-primary/20",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        )}
+      >
+        {/* Top hairline — tints primary on hover */}
+        <span
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-x-0 top-0 h-px transition-colors duration-200",
+            selected ? "bg-primary/40" : "bg-border/80 group-hover/file-card:bg-primary/40"
+          )}
+        />
 
       {/* Thumbnail: soft radial wash + faint grid texture */}
       <div
@@ -105,8 +131,21 @@ export default function FileCard({ file }: FileCardProps) {
           )}
         </div>
       </div>
-      </Link>
+      </div>
       <FileActionsMenu file={file} variant="card" />
+
+      <div 
+        className={cn(
+          "absolute left-2.5 top-2.5 z-10 transition-opacity duration-200",
+          selected ? "opacity-100" : "opacity-0 group-hover/file-card:opacity-100"
+        )}
+      >
+        <Checkbox 
+          checked={selected}
+          onCheckedChange={(checked) => onSelectChange?.(checked === true)}
+          className="border-primary/30 bg-white/60 shadow-sm backdrop-blur-md data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-white"
+        />
+      </div>
     </div>
   );
 }

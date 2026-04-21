@@ -32,7 +32,7 @@ export default function AppShell() {
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar />
-          <main className="min-h-0 flex-1 overflow-y-auto">
+          <main className="min-h-0 flex-1 overflow-y-scroll">
             <Outlet />
           </main>
         </div>

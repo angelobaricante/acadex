@@ -5,6 +5,8 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Download,
+  Edit2,
   File,
   FileCode,
   FileIcon,
@@ -17,12 +19,14 @@ import {
   List,
   Loader2,
   Plus,
+  Tags,
   Trash2,
   TrendingDown,
   Upload,
+  X,
   type LucideIcon,
 } from "lucide-react";
-import { deleteFolder, listFiles, listFolders } from "@/lib/api";
+import { deleteFile, deleteFolder, listFiles, listFolders } from "@/lib/api";
 import type { ArchivedFile, FileKind, Folder } from "@/lib/types";
 import { useSessionStore, useUIStore } from "@/lib/store";
 import { useShellSearch } from "@/components/layout/AppShell";
@@ -102,6 +106,7 @@ export default function DashboardPage() {
   const uploadsVersion = useUIStore((s) => s.uploadsVersion);
   const foldersVersion = useUIStore((s) => s.foldersVersion);
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
+  const bumpUploadsVersion = useUIStore((s) => s.bumpUploadsVersion);
   const setCurrentFolderId = useUIStore((s) => s.setCurrentFolderId);
   const { search } = useShellSearch();
 
@@ -113,7 +118,11 @@ export default function DashboardPage() {
   const [activeFolder, setActiveFolder] = useState<Folder | null>(null);
   const [displayLimit, setDisplayLimit] = useState(16);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
+  const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
   const observer = useRef<IntersectionObserver | null>(null);
+
+  const totalSelected = selectedFileIds.size + selectedFolderIds.size;
 
   const ownerId = user?.role === "student" ? user.id : undefined;
 
@@ -227,6 +236,7 @@ export default function DashboardPage() {
     (user.role === "admin" || activeFolder.ownerId === user.id);
 
   function handleOpenFolder(folder: Folder) {
+    clearSelection();
     setActiveFolder(folder);
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -274,10 +284,62 @@ export default function DashboardPage() {
     [isLoadingMore, displayLimit, files]
   );
 
+  function toggleSelection(id: string, checked: boolean) {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function toggleFolderSelection(id: string, checked: boolean) {
+    setSelectedFolderIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedFileIds(new Set());
+    setSelectedFolderIds(new Set());
+  }
+
+  async function handleBulkDelete() {
+    if (totalSelected === 0) return;
+    const confirmed = window.confirm(`Delete ${totalSelected} selected items?`);
+    if (!confirmed) return;
+    try {
+      await Promise.all([
+        ...Array.from(selectedFileIds).map((id) => deleteFile(id)),
+        ...Array.from(selectedFolderIds).map((id) => deleteFolder(id)),
+      ]);
+      toast.success(`${totalSelected} items deleted`);
+      clearSelection();
+      bumpUploadsVersion();
+      bumpFoldersVersion();
+    } catch {
+      toast.error("Error deleting some files");
+    }
+  }
+
+  function handleBulkMove() {
+    toast.info("Move functionality coming soon!");
+  }
+
+  function handleBulkTag() {
+    toast.info("Tag functionality coming soon!");
+  }
+
   const displayedFiles = files?.slice(0, displayLimit) ?? null;
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-8 md:py-10">
+    <div 
+      className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-8 md:py-10"
+      onClick={clearSelection}
+    >
       {/* Heading */}
       <header className="flex flex-col gap-1.5">
         <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
@@ -309,7 +371,7 @@ export default function DashboardPage() {
       </header>
 
       {/* Breadcrumb + folder actions row */}
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex w-full items-center justify-between gap-3">
         <nav
           aria-label="Folder breadcrumb"
           className="flex min-w-0 items-center gap-1.5 text-[13.5px]"
@@ -337,6 +399,30 @@ export default function DashboardPage() {
         </nav>
 
         <div className="flex shrink-0 items-center gap-1">
+          {activeFolder && (
+            <>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => toast.info("Rename coming soon")}
+                className="h-8 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:text-foreground"
+              >
+                <Edit2 className="size-[14px]" strokeWidth={1.8} />
+                <span>Rename</span>
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => toast.info("Download coming soon")}
+                className="h-8 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:text-foreground"
+              >
+                <Download className="size-[14px]" strokeWidth={1.8} />
+                <span>Download</span>
+              </Button>
+            </>
+          )}
           {canDeleteActiveFolder && (
             <Button
               type="button"
@@ -374,6 +460,8 @@ export default function DashboardPage() {
                 key={folder.id}
                 folder={folder}
                 fileCount={fileCountsByFolder[folder.id] ?? 0}
+                selected={selectedFolderIds.has(folder.id)}
+                onSelectChange={(c) => toggleFolderSelection(folder.id, c)}
                 onClick={() => handleOpenFolder(folder)}
               />
             ))}
@@ -382,7 +470,7 @@ export default function DashboardPage() {
       )}
 
       {/* Filters row */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex w-full flex-wrap items-center gap-2">
         {/* Type filter dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -551,7 +639,12 @@ export default function DashboardPage() {
         <>
           <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {displayedFiles!.map((file) => (
-              <FileCard key={file.id} file={file} />
+              <FileCard 
+                key={file.id} 
+                file={file} 
+                selected={selectedFileIds.has(file.id)}
+                onSelectChange={(c) => toggleSelection(file.id, c)}
+              />
             ))}
           </div>
           {files && displayLimit < files.length && (
@@ -564,7 +657,12 @@ export default function DashboardPage() {
         <>
           <div className="space-y-1.5">
             {displayedFiles!.map((file) => (
-              <FileRow key={file.id} file={file} />
+              <FileRow 
+                key={file.id} 
+                file={file} 
+                selected={selectedFileIds.has(file.id)}
+                onSelectChange={(c) => toggleSelection(file.id, c)}
+              />
             ))}
           </div>
           {files && displayLimit < files.length && (
@@ -573,6 +671,61 @@ export default function DashboardPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* Bulk Actions Bar */}
+      {totalSelected > 0 && (
+        <div className="fixed bottom-8 left-0 right-0 z-50 flex pointer-events-none justify-center md:left-56">
+          <div 
+            className="pointer-events-auto flex items-center gap-2 rounded-full border border-border/80 bg-white p-1.5 pl-4 text-foreground shadow-[0_8px_30px_rgb(0,0,0,0.08)] ring-1 ring-black/5 backdrop-blur-md animate-in slide-in-from-bottom-6 fade-in duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-2.5 border-r border-border/70 pr-4 text-[13px] font-medium text-muted-foreground">
+              <div className="flex size-[22px] items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white shadow-sm">
+                {totalSelected}
+              </div>
+              selected
+          </div>
+          <div className="flex items-center gap-1 pl-1 pr-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleBulkMove}
+              className="h-8 gap-1.5 rounded-full px-3 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <FolderOpen className="size-[14px]" />
+              Move
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleBulkTag}
+              className="h-8 gap-1.5 rounded-full px-3 text-[13px] text-muted-foreground hover:bg-muted hover:text-foreground"
+            >
+              <Tags className="size-[14px]" />
+              Tag
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleBulkDelete}
+              className="h-8 gap-1.5 rounded-full px-3 text-[13px] text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 className="size-[14px]" />
+              Delete
+            </Button>
+          </div>
+          <div className="ml-1 border-l border-border/70 pl-2 pr-1">
+            <button
+              onClick={clearSelection}
+              className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              aria-label="Clear selection"
+            >
+              <X className="size-[15px]" />
+            </button>
+          </div>
+        </div>
+        </div>
       )}
     </div>
   );
