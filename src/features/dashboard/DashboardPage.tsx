@@ -89,6 +89,7 @@ export default function DashboardPage() {
   const uploadsVersion = useUIStore((s) => s.uploadsVersion);
   const foldersVersion = useUIStore((s) => s.foldersVersion);
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
+  const setCurrentFolderId = useUIStore((s) => s.setCurrentFolderId);
   const { search } = useShellSearch();
 
   const [kind, setKind] = useState<KindFilter>("all");
@@ -100,6 +101,18 @@ export default function DashboardPage() {
   const [activeFolder, setActiveFolder] = useState<Folder | null>(null);
 
   const ownerId = user?.role === "student" ? user.id : undefined;
+
+  // Keep the UI store in sync so the upload dialog can seed its folder target.
+  useEffect(() => {
+    setCurrentFolderId(activeFolder?.id ?? null);
+  }, [activeFolder, setCurrentFolderId]);
+
+  // Clear the current folder reference when the dashboard unmounts.
+  useEffect(() => {
+    return () => {
+      setCurrentFolderId(null);
+    };
+  }, [setCurrentFolderId]);
 
   // Fetch folders list on mount / when they change.
   useEffect(() => {

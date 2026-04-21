@@ -11,6 +11,7 @@ import { formatBytes, formatDate } from "@/lib/format";
 import type { ArchivedFile, FileKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import SavingsBadge from "./SavingsBadge";
+import FileActionsMenu from "./FileActionsMenu";
 
 interface FileCardProps {
   file: ArchivedFile;
@@ -37,11 +38,12 @@ export default function FileCard({ file }: FileCardProps) {
   const overflow = file.tags.length - visibleTags.length;
 
   return (
-    <Link
+    <div className="group/file-card relative">
+      <Link
       to={`/file/${file.id}`}
       data-slot="file-card"
       className={cn(
-        "group/file-card relative flex flex-col overflow-hidden rounded-xl border border-border/70 bg-card",
+        "relative flex flex-col overflow-hidden rounded-xl border border-border/70 bg-card",
         "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
         "transition-[transform,box-shadow,border-color] duration-200 ease-out",
         "hover:-translate-y-px hover:border-primary/20",
@@ -104,6 +106,8 @@ export default function FileCard({ file }: FileCardProps) {
           )}
         </div>
       </div>
-    </Link>
+      </Link>
+      <FileActionsMenu file={file} variant="card" />
+    </div>
   );
 }

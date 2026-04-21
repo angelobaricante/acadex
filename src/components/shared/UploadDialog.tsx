@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FileUp, Loader2 } from "lucide-react";
+import { Check, FileUp, Folder as FolderIcon, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,19 +8,43 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
-import { uploadFile } from "@/lib/api";
+import { listFolders, moveFileToFolder, uploadFile } from "@/lib/api";
+import type { Folder } from "@/lib/types";
 import { formatBytes, formatPercent } from "@/lib/format";
 import { toast } from "sonner";
 
 export default function UploadDialog() {
   const uploadDialogOpen = useUIStore((s) => s.uploadDialogOpen);
   const closeUpload = useUIStore((s) => s.closeUpload);
+  const currentFolderId = useUIStore((s) => s.currentFolderId);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
+
+  // Load folders + seed initial target when dialog opens.
+  useEffect(() => {
+    if (!uploadDialogOpen) return;
+    let cancelled = false;
+    listFolders().then((result) => {
+      if (cancelled) return;
+      setFolders(result);
+    });
+    setTargetFolderId(currentFolderId);
+    return () => {
+      cancelled = true;
+    };
+  }, [uploadDialogOpen, currentFolderId]);
 
   // Reset local state when dialog closes.
   useEffect(() => {
@@ -30,6 +54,8 @@ export default function UploadDialog() {
     }
   }, [uploadDialogOpen]);
 
+  const targetFolder = folders.find((f) => f.id === targetFolderId) ?? null;
+
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
@@ -38,16 +64,30 @@ export default function UploadDialog() {
       for (const file of files) {
         try {
           const result = await uploadFile(file);
+          if (targetFolderId) {
+            try {
+              await moveFileToFolder(result.id, targetFolderId);
+            } catch {
+              // Surface as a soft warning; upload itself succeeded.
+              toast.error(`Couldn't move ${file.name} to '${targetFolder?.name ?? "folder"}'`);
+            }
+          }
+          const sizeSummary = `Compressed ${formatBytes(result.originalBytes)} → ${formatBytes(
+            result.storedBytes
+          )} (${formatPercent(result.compressionRatio)} smaller)`;
           toast.success(`Uploaded ${file.name}`, {
-            description: `Compressed ${formatBytes(result.originalBytes)} → ${formatBytes(
-              result.storedBytes
-            )} (${formatPercent(result.compressionRatio)} smaller).`,
+            description: targetFolder
+              ? `${sizeSummary} → uploaded to '${targetFolder.name}'.`
+              : `${sizeSummary}.`,
           });
         } catch {
           toast.error(`Failed to upload ${file.name}`);
         }
       }
       useUIStore.getState().bumpUploadsVersion();
+      if (targetFolderId) {
+        useUIStore.getState().bumpFoldersVersion();
+      }
       closeUpload();
     } finally {
       setUploading(false);
@@ -82,6 +122,72 @@ export default function UploadDialog() {
             AcaDex compresses uploads on the fly to save space without losing fidelity.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Folder picker */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+            Upload to
+          </span>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uploading}
+                className="h-8 w-full justify-start gap-2 rounded-lg px-2.5 text-[12.5px] font-normal"
+              >
+                <FolderIcon
+                  className="size-[14px] text-muted-foreground"
+                  strokeWidth={1.8}
+                />
+                <span className="truncate text-foreground">
+                  {targetFolder ? targetFolder.name : "All files"}
+                </span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              className="w-[calc(var(--radix-dropdown-menu-trigger-width))] p-1"
+            >
+              <DropdownMenuItem
+                onSelect={() => setTargetFolderId(null)}
+                className="gap-2 px-2 py-1.5 text-[13px]"
+              >
+                <FolderIcon
+                  className="size-[14px] text-muted-foreground"
+                  strokeWidth={1.8}
+                />
+                <span>All files</span>
+                {targetFolderId === null && (
+                  <Check
+                    className="ml-auto size-[13px] text-primary"
+                    strokeWidth={2}
+                  />
+                )}
+              </DropdownMenuItem>
+              {folders.map((folder) => (
+                <DropdownMenuItem
+                  key={folder.id}
+                  onSelect={() => setTargetFolderId(folder.id)}
+                  className="gap-2 px-2 py-1.5 text-[13px]"
+                >
+                  <FolderIcon
+                    className="size-[14px] text-muted-foreground"
+                    strokeWidth={1.8}
+                  />
+                  <span className="truncate">{folder.name}</span>
+                  {targetFolderId === folder.id && (
+                    <Check
+                      className="ml-auto size-[13px] text-primary"
+                      strokeWidth={2}
+                    />
+                  )}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
         <div
           role="button"

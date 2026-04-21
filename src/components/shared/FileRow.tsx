@@ -11,6 +11,7 @@ import { formatBytes, formatDate } from "@/lib/format";
 import type { ArchivedFile, FileKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import SavingsBadge from "./SavingsBadge";
+import FileActionsMenu from "./FileActionsMenu";
 
 interface FileRowProps {
   file: ArchivedFile;
@@ -37,11 +38,12 @@ export default function FileRow({ file }: FileRowProps) {
   const overflow = file.tags.length - visibleTags.length;
 
   return (
-    <Link
+    <div className="group/file-row relative">
+      <Link
       to={`/file/${file.id}`}
       data-slot="file-row"
       className={cn(
-        "group/file-row grid items-center gap-4 rounded-lg border border-transparent px-3 py-2.5",
+        "grid items-center gap-4 rounded-lg border border-transparent py-2.5 pl-3 pr-12",
         "grid-cols-[24px_minmax(0,1fr)_auto_96px_96px]",
         "transition-colors duration-150",
         "hover:border-border/80 hover:bg-white",
@@ -87,6 +89,10 @@ export default function FileRow({ file }: FileRowProps) {
       <span className="text-right text-[12.5px] text-muted-foreground tabular-nums">
         {formatDate(file.createdAt)}
       </span>
-    </Link>
+      </Link>
+      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+        <FileActionsMenu file={file} variant="row" />
+      </div>
+    </div>
   );
 }
