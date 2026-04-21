@@ -1,13 +1,25 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpDown,
+  Check,
+  ChevronDown,
   ChevronRight,
+  Clock,
+  File,
+  FileCode,
+  FileIcon,
+  FileImage,
+  FileText,
+  FileVideo,
   FolderOpen,
+  HardDrive,
   LayoutGrid,
   List,
   Plus,
   Trash2,
+  TrendingDown,
   Upload,
+  type LucideIcon,
 } from "lucide-react";
 import { deleteFolder, listFiles, listFolders } from "@/lib/api";
 import type { ArchivedFile, FileKind, Folder } from "@/lib/types";
@@ -33,20 +45,20 @@ type KindFilter = "all" | FileKind;
 type SortKey = "recent" | "largest" | "most_saved";
 type ViewMode = "grid" | "list";
 
-const KIND_OPTIONS: Array<{ value: KindFilter; label: string }> = [
-  { value: "all", label: "All types" },
-  { value: "pdf", label: "PDF" },
-  { value: "docx", label: "Word" },
-  { value: "pptx", label: "PowerPoint" },
-  { value: "image", label: "Images" },
-  { value: "video", label: "Videos" },
-  { value: "other", label: "Other" },
+const KIND_OPTIONS: Array<{ value: KindFilter; label: string; icon: LucideIcon }> = [
+  { value: "all", label: "All types", icon: FileIcon },
+  { value: "pdf", label: "PDFs", icon: FileText },
+  { value: "docx", label: "Word Documents", icon: FileText },
+  { value: "pptx", label: "Presentations", icon: FileText },
+  { value: "image", label: "Photos & images", icon: FileImage },
+  { value: "video", label: "Videos", icon: FileVideo },
+  { value: "other", label: "Other", icon: FileCode },
 ];
 
-const SORT_OPTIONS: Array<{ value: SortKey; label: string }> = [
-  { value: "recent", label: "Most recent" },
-  { value: "largest", label: "Largest original" },
-  { value: "most_saved", label: "Most saved" },
+const SORT_OPTIONS: Array<{ value: SortKey; label: string; icon: LucideIcon }> = [
+  { value: "recent", label: "Most recent", icon: Clock },
+  { value: "largest", label: "Largest original", icon: HardDrive },
+  { value: "most_saved", label: "Most saved", icon: TrendingDown },
 ];
 
 const ROLE_HEADINGS = {
@@ -334,62 +346,42 @@ export default function DashboardPage() {
 
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-2">
-        {/* Kind filter — pills on md+, dropdown on smaller screens */}
-        <div
-          role="tablist"
-          aria-label="Filter by file type"
-          className="hidden items-center gap-0.5 rounded-lg border border-border/70 bg-white p-0.5 shadow-[0_1px_0_rgba(16,24,40,0.02)] md:flex"
-        >
-          {KIND_OPTIONS.map((opt) => {
-            const active = kind === opt.value;
-            return (
-              <button
+        {/* Type filter dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className={cn(
+                "h-8 gap-1.5 rounded-lg text-[13px] font-medium transition-colors",
+                kind === "all"
+                  ? "bg-muted/50 hover:bg-muted"
+                  : "border-transparent bg-primary/10 text-primary hover:bg-primary/20"
+              )}
+            >
+              <File className="size-[14px]" strokeWidth={2} />
+              <span>{kind === "all" ? "Type" : kindLabel}</span>
+              <ChevronDown className={cn("size-[14px]", kind === "all" ? "text-muted-foreground/70" : "text-primary/70")} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56 p-1">
+            {KIND_OPTIONS.map((opt) => (
+              <DropdownMenuItem
                 key={opt.value}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => setKind(opt.value)}
+                onSelect={() => setKind(opt.value)}
                 className={cn(
-                  "h-7 rounded-md px-2.5 text-[12.5px] font-medium transition-colors duration-150",
-                  active
-                    ? "bg-primary/10 text-primary"
-                    : "text-muted-foreground hover:text-foreground"
+                  "flex items-center gap-2.5 px-2 py-1.5 text-[13px] cursor-pointer",
+                  kind === opt.value && "font-medium text-primary bg-primary/5"
                 )}
               >
-                {opt.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="md:hidden">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-8 gap-1.5 rounded-lg text-[12.5px]"
-              >
-                <span>{kindLabel}</span>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-44 p-1">
-              {KIND_OPTIONS.map((opt) => (
-                <DropdownMenuItem
-                  key={opt.value}
-                  onSelect={() => setKind(opt.value)}
-                  className={cn(
-                    "px-2 py-1.5 text-[13px]",
-                    kind === opt.value && "font-medium text-primary"
-                  )}
-                >
-                  {opt.label}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+                <opt.icon className={cn("size-[16px]", kind === opt.value ? "text-primary" : "text-muted-foreground")} />
+                <span className="flex-1">{opt.label}</span>
+                {kind === opt.value && <Check className="size-[14px] text-primary" />}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Sort dropdown */}
         <DropdownMenu>
@@ -398,23 +390,31 @@ export default function DashboardPage() {
               type="button"
               variant="outline"
               size="sm"
-              className="h-8 gap-1.5 rounded-lg text-[12.5px]"
+              className={cn(
+                "h-8 gap-1.5 rounded-lg text-[13px] font-medium transition-colors",
+                sort === "recent"
+                  ? "bg-muted/50 hover:bg-muted"
+                  : "border-transparent bg-primary/10 text-primary hover:bg-primary/20"
+              )}
             >
-              <ArrowUpDown className="size-[13px]" />
-              <span>{sortLabel}</span>
+              <ArrowUpDown className="size-[14px]" strokeWidth={2} />
+              <span>{sort === "recent" ? "Sort" : sortLabel}</span>
+              <ChevronDown className={cn("size-[14px]", sort === "recent" ? "text-muted-foreground/70" : "text-primary/70")} />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-44 p-1">
+          <DropdownMenuContent align="start" className="w-56 p-1">
             {SORT_OPTIONS.map((opt) => (
               <DropdownMenuItem
                 key={opt.value}
                 onSelect={() => setSort(opt.value)}
                 className={cn(
-                  "px-2 py-1.5 text-[13px]",
-                  sort === opt.value && "font-medium text-primary"
+                  "flex items-center gap-2.5 px-2 py-1.5 text-[13px] cursor-pointer",
+                  sort === opt.value && "font-medium text-primary bg-primary/5"
                 )}
               >
-                {opt.label}
+                <opt.icon className={cn("size-[16px]", sort === opt.value ? "text-primary" : "text-muted-foreground")} />
+                <span className="flex-1">{opt.label}</span>
+                {sort === opt.value && <Check className="size-[14px] text-primary" />}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>

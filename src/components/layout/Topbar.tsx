@@ -88,7 +88,7 @@ export default function Topbar() {
           type="button"
           size="sm"
           onClick={openUpload}
-          className="h-9 gap-1.5 rounded-lg px-3 text-[13px] font-medium"
+          className="h-9 gap-1.5 rounded-lg border-transparent bg-[#2d8a56] px-3 text-[13px] font-medium text-white hover:bg-[#247045]"
         >
           <Upload className="size-[15px]" />
           <span>Upload</span>

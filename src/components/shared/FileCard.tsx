@@ -45,9 +45,8 @@ export default function FileCard({ file }: FileCardProps) {
       className={cn(
         "relative flex h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-card",
         "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
-        "transition-[transform,box-shadow,border-color] duration-200 ease-out",
-        "hover:-translate-y-px hover:border-primary/20",
-        "hover:shadow-[0_1px_0_rgba(16,24,40,0.03),0_8px_20px_-8px_rgba(16,24,40,0.10)]",
+        "transition-[border-color] duration-200 ease-out",
+        "hover:border-primary/20",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       )}
     >

@@ -28,7 +28,6 @@ export default function AppShell() {
     <ShellSearchContext.Provider value={value}>
       <div
         className="flex h-full min-h-0 w-full bg-[hsl(48_25%_98%)]"
-        style={{ animation: "page-enter 0.4s cubic-bezier(0,0,0.2,1) both" }}
       >
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">

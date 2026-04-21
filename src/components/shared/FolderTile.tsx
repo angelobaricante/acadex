@@ -52,9 +52,8 @@ export default function FolderTile({
       className={cn(
         "group/folder-tile flex h-[60px] w-[180px] shrink-0 items-center gap-2.5 rounded-xl border border-border/70 bg-card px-2.5 text-left",
         "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
-        "transition-[transform,box-shadow,border-color] duration-200 ease-out",
-        "hover:-translate-y-px hover:border-primary/30",
-        "hover:shadow-[0_1px_0_rgba(16,24,40,0.03),0_8px_20px_-8px_rgba(16,24,40,0.10)]",
+        "transition-[border-color] duration-200 ease-out",
+        "hover:border-primary/30",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       )}
     >

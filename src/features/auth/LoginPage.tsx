@@ -95,25 +95,16 @@ export default function LoginPage() {
   const setUser = useSessionStore((s) => s.setUser);
   const [role, setRole] = useState<Role>("faculty");
   const [loading, setLoading] = useState(false);
-  const [exiting, setExiting] = useState(false);
   const roleIndex = ROLE_OPTIONS.findIndex((r) => r.value === role);
 
   async function handleSignIn() {
     if (loading) return;
     setLoading(true);
-    setExiting(true);
     try {
-      // Run the API call and the exit animation minimum timer in parallel
-      // so navigation never waits longer than the slower of the two.
-      const [user] = await Promise.all([
-        mockSignIn(role),
-        new Promise<void>((r) => setTimeout(r, 350)),
-      ]);
+      const user = await mockSignIn(role);
       setUser(user);
       navigate("/", { replace: true });
     } catch {
-      // If sign-in fails, reverse the exit so the form reappears
-      setExiting(false);
       setLoading(false);
     }
   }
@@ -121,7 +112,6 @@ export default function LoginPage() {
   return (
     <div
       className="relative min-h-full overflow-hidden bg-[hsl(48_25%_98%)]"
-      style={exiting ? { animation: "page-exit 0.35s cubic-bezier(0.4,0,1,1) forwards" } : undefined}
     >
       {/* Ambient green radial glow, anchored top-left for asymmetry */}
       <div
