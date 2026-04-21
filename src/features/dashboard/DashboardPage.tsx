@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpDown,
   Check,
@@ -15,6 +15,7 @@ import {
   HardDrive,
   LayoutGrid,
   List,
+  Loader2,
   Plus,
   Trash2,
   TrendingDown,
@@ -110,6 +111,9 @@ export default function DashboardPage() {
   const [folders, setFolders] = useState<Folder[] | null>(null);
   const [allFiles, setAllFiles] = useState<ArchivedFile[] | null>(null);
   const [activeFolder, setActiveFolder] = useState<Folder | null>(null);
+  const [displayLimit, setDisplayLimit] = useState(16);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const observer = useRef<IntersectionObserver | null>(null);
 
   const ownerId = user?.role === "student" ? user.id : undefined;
 
@@ -245,6 +249,33 @@ export default function DashboardPage() {
     }
   }
 
+  // Reset pagination when filters change
+  useEffect(() => {
+    setDisplayLimit(16);
+  }, [kind, search, activeFolder?.id, sort]);
+
+  const lastElementRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (isLoadingMore) return;
+      if (observer.current) observer.current.disconnect();
+      if (node) {
+        observer.current = new IntersectionObserver((entries) => {
+          if (entries[0].isIntersecting && files && displayLimit < files.length) {
+            setIsLoadingMore(true);
+            setTimeout(() => {
+              setDisplayLimit((prev) => prev + 16);
+              setIsLoadingMore(false);
+            }, 600);
+          }
+        });
+        observer.current.observe(node);
+      }
+    },
+    [isLoadingMore, displayLimit, files]
+  );
+
+  const displayedFiles = files?.slice(0, displayLimit) ?? null;
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-8 md:py-10">
       {/* Heading */}
@@ -259,15 +290,21 @@ export default function DashboardPage() {
           {heading.sub}
         </p>
         {files && (
-          <p className="mt-1 text-[12.5px] text-muted-foreground tabular-nums">
-            <span className="font-medium text-foreground">{files.length}</span>{" "}
-            {files.length === 1 ? "file" : "files"}
-            <span className="mx-1.5 text-muted-foreground/50">·</span>
-            <span className="font-medium text-foreground">
-              {formatBytes(totalSaved)}
-            </span>{" "}
-            saved total
-          </p>
+          <div className="mt-2.5 flex items-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11.5px] font-medium text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]">
+              <span className="flex items-center gap-1.5">
+                <FileIcon className="size-[13px] opacity-80" strokeWidth={2.5} />
+                <span className="tabular-nums">{files.length}</span>
+                <span className="font-normal opacity-90">{files.length === 1 ? "file" : "files"}</span>
+              </span>
+              <span className="opacity-30">|</span>
+              <span className="flex items-center gap-1.5">
+                <TrendingDown className="size-[13px] opacity-80" strokeWidth={2.5} />
+                <span className="tabular-nums">{formatBytes(totalSaved)}</span>
+                <span className="font-normal opacity-90">saved</span>
+              </span>
+            </div>
+          </div>
         )}
       </header>
 
@@ -511,17 +548,31 @@ export default function DashboardPage() {
           }
         />
       ) : view === "grid" ? (
-        <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {files.map((file) => (
-            <FileCard key={file.id} file={file} />
-          ))}
-        </div>
+        <>
+          <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            {displayedFiles!.map((file) => (
+              <FileCard key={file.id} file={file} />
+            ))}
+          </div>
+          {files && displayLimit < files.length && (
+            <div ref={lastElementRef} className="mt-8 flex items-center justify-center pb-8">
+              <Loader2 className="size-6 animate-spin text-primary/70" />
+            </div>
+          )}
+        </>
       ) : (
-        <div className="space-y-1.5">
-          {files.map((file) => (
-            <FileRow key={file.id} file={file} />
-          ))}
-        </div>
+        <>
+          <div className="space-y-1.5">
+            {displayedFiles!.map((file) => (
+              <FileRow key={file.id} file={file} />
+            ))}
+          </div>
+          {files && displayLimit < files.length && (
+            <div ref={lastElementRef} className="mt-8 flex items-center justify-center pb-8">
+              <Loader2 className="size-6 animate-spin text-primary/70" />
+            </div>
+          )}
+        </>
       )}
     </div>
   );
