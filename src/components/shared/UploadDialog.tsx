@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, FileUp, Folder as FolderIcon, Loader2 } from "lucide-react";
+import { Check, ChevronDown, FileUp, Folder as FolderIcon, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -141,9 +141,10 @@ export default function UploadDialog() {
                   className="size-[14px] text-muted-foreground"
                   strokeWidth={1.8}
                 />
-                <span className="truncate text-foreground">
+                <span className="flex-1 truncate text-left text-foreground">
                   {targetFolder ? targetFolder.name : "All files"}
                 </span>
+                <ChevronDown className="size-[14px] text-muted-foreground/70" strokeWidth={1.8} />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
