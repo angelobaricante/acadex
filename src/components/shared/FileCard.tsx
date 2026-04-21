@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { formatBytes, formatDate } from "@/lib/format";
 import type { ArchivedFile, FileKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useShellSearch } from "@/components/layout/AppShell";
 import SavingsBadge from "./SavingsBadge";
 import FileActionsMenu from "./FileActionsMenu";
 
@@ -40,10 +41,14 @@ function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: 
 
 export default function FileCard({ file, selected, onSelectChange }: FileCardProps) {
   const navigate = useNavigate();
+  const { setSearch } = useShellSearch();
   const config = fileTypeConfig(file.kind);
   const Icon = config.Icon;
   const visibleTags = file.tags.slice(0, 1);
   const overflow = file.tags.length - visibleTags.length;
+
+  const fileNameWithoutExt = file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, "") : file.name;
+  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toUpperCase() : "";
 
   const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault();
@@ -59,6 +64,12 @@ export default function FileCard({ file, selected, onSelectChange }: FileCardPro
     if (e.key === "Enter" || e.key === " ") {
       handleClick(e);
     }
+  };
+
+  const handleTagClick = (e: React.MouseEvent, tag: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSearch(tag);
   };
 
   return (
@@ -112,9 +123,16 @@ export default function FileCard({ file, selected, onSelectChange }: FileCardPro
 
       {/* Body */}
       <div className="flex flex-1 flex-col gap-2.5 p-3">
-        <p className="line-clamp-2 min-h-[2.55em] text-[14px] font-medium leading-snug text-foreground">
-          {file.name}
-        </p>
+        <div className="flex items-start justify-between gap-1.5 min-h-[2.55em]">
+          <p className="line-clamp-2 text-[14px] font-medium leading-snug text-foreground">
+            {fileNameWithoutExt}
+          </p>
+          {extension && (
+            <Badge variant="outline" className={cn("mt-0.5 h-[18px] shrink-0 rounded-full px-1.5 text-[9.5px] font-bold uppercase tracking-wider border-transparent mix-blend-multiply", config.bg, config.color)}>
+              {extension}
+            </Badge>
+          )}
+        </div>
 
         <div className="flex items-center justify-between text-[11.5px] text-muted-foreground tabular-nums">
           <span>{formatBytes(file.storedBytes)}</span>
@@ -127,7 +145,8 @@ export default function FileCard({ file, selected, onSelectChange }: FileCardPro
             <Badge
               key={tag}
               variant="secondary"
-              className="h-5 min-w-0 max-w-[88px] truncate px-1.5 text-[11px] font-normal text-muted-foreground"
+              onClick={(e) => handleTagClick(e, tag)}
+              className="h-5 min-w-0 max-w-[88px] cursor-pointer rounded-full truncate px-1.5 text-[11px] font-normal text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
             >
               {tag}
             </Badge>

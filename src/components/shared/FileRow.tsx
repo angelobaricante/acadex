@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { formatBytes, formatDate } from "@/lib/format";
 import type { ArchivedFile, FileKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useShellSearch } from "@/components/layout/AppShell";
 import SavingsBadge from "./SavingsBadge";
 import FileActionsMenu from "./FileActionsMenu";
 
@@ -40,10 +41,14 @@ function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: 
 
 export default function FileRow({ file, selected, onSelectChange }: FileRowProps) {
   const navigate = useNavigate();
+  const { setSearch } = useShellSearch();
   const config = fileTypeConfig(file.kind);
   const Icon = config.Icon;
   const visibleTags = file.tags.slice(0, 2);
   const overflow = file.tags.length - visibleTags.length;
+
+  const fileNameWithoutExt = file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, "") : file.name;
+  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toUpperCase() : "";
 
   const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault();
@@ -59,6 +64,12 @@ export default function FileRow({ file, selected, onSelectChange }: FileRowProps
     if (e.key === "Enter" || e.key === " ") {
       handleClick(e);
     }
+  };
+
+  const handleTagClick = (e: React.MouseEvent, tag: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSearch(tag);
   };
 
   return (
@@ -98,15 +109,21 @@ export default function FileRow({ file, selected, onSelectChange }: FileRowProps
 
       <div className="flex min-w-0 items-center gap-2">
         <span className="truncate text-[13.5px] font-medium text-foreground">
-          {file.name}
+          {fileNameWithoutExt}
         </span>
+        {extension && (
+          <Badge variant="outline" className={cn("h-4 shrink-0 rounded-full px-1.5 text-[9px] font-bold uppercase tracking-wider border-transparent mix-blend-multiply", config.bg, config.color)}>
+            {extension}
+          </Badge>
+        )}
         {visibleTags.length > 0 && (
           <span className="hidden min-w-0 items-center gap-1 sm:inline-flex">
             {visibleTags.map((tag) => (
               <Badge
                 key={tag}
                 variant="secondary"
-                className="h-5 shrink-0 px-1.5 text-[11px] font-normal text-muted-foreground"
+                onClick={(e) => handleTagClick(e, tag)}
+                className="h-5 shrink-0 cursor-pointer rounded-full px-1.5 text-[11px] font-normal text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
               >
                 {tag}
               </Badge>

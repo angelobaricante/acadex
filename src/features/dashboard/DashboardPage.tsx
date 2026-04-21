@@ -206,9 +206,16 @@ export default function DashboardPage() {
   const emptyCopy = user ? ROLE_EMPTY[user.role] : ROLE_EMPTY.student;
   const filtersActive = Boolean(search) || kind !== "all";
 
-  const totalSaved = useMemo(() => {
-    if (!files) return 0;
-    return files.reduce((acc, f) => acc + (f.originalBytes - f.storedBytes), 0);
+  const stats = useMemo(() => {
+    if (!files) return { saved: 0, original: 0, percent: 0 };
+    let saved = 0;
+    let original = 0;
+    for (const f of files) {
+      saved += (f.originalBytes - f.storedBytes);
+      original += f.originalBytes;
+    }
+    const percent = original > 0 ? Math.round((saved / original) * 100) : 0;
+    return { saved, original, percent };
   }, [files]);
 
   const fileCountsByFolder = useMemo(() => {
@@ -361,9 +368,18 @@ export default function DashboardPage() {
               </span>
               <span className="opacity-30">|</span>
               <span className="flex items-center gap-1.5">
-                <TrendingDown className="size-[13px] opacity-80" strokeWidth={2.5} />
-                <span className="tabular-nums">{formatBytes(totalSaved)}</span>
-                <span className="font-normal opacity-90">saved</span>
+                <svg viewBox="0 0 24 24" className="size-[14px] -rotate-90" fill="none" strokeWidth="3.5">
+                  <circle cx="12" cy="12" r="9" className="stroke-primary/20" />
+                  <circle 
+                    cx="12" cy="12" r="9" 
+                    className="stroke-primary transition-all duration-500 ease-out" 
+                    strokeDasharray="56.5" 
+                    strokeDashoffset={56.5 - (56.5 * stats.percent) / 100} 
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span className="tabular-nums">{formatBytes(stats.saved)}</span>
+                <span className="font-normal opacity-90">saved vs original</span>
               </span>
             </div>
           </div>
