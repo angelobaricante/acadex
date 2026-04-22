@@ -8,7 +8,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Database, FileText, Leaf, PhilippinePeso, TrendingDown, TrendingUp, FileImage, FileVideo, FileCode, Presentation, FileIcon } from "lucide-react";
+import { Database, FileText, Leaf, PhilippinePeso, TrendingDown, TrendingUp, FileImage, FileVideo, Presentation, FileIcon } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -57,9 +57,10 @@ interface StatCardProps {
   sub: string;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   trend?: { value: string; positive: boolean };
+  valueClassName?: string;
 }
 
-function StatCard({ label, value, sub, icon: Icon, trend }: StatCardProps) {
+function StatCard({ label, value, sub, icon: Icon, trend, valueClassName }: StatCardProps) {
   return (
     <div
       className={cn(
@@ -100,7 +101,7 @@ function StatCard({ label, value, sub, icon: Icon, trend }: StatCardProps) {
         <span className="text-[12.5px] font-medium text-muted-foreground">
           {label}
         </span>
-        <span className="text-[28px] font-bold leading-none tracking-tight text-foreground tabular-nums">
+        <span className={cn("text-[28px] font-bold leading-none tracking-tight tabular-nums", valueClassName ?? "text-foreground")}>
           {value}
         </span>
         <span className="mt-1 text-[12.5px] leading-snug text-muted-foreground">
@@ -152,7 +153,7 @@ function BreakdownSkeleton() {
         <Skeleton className="h-4 w-24" />
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 md:gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4 rounded-xl border border-border/70 bg-white p-4">
                <Skeleton className="size-10 shrink-0 rounded-lg" />
@@ -221,6 +222,7 @@ export default function ImpactPage() {
             sub={`of ${formatBytes(stats.totalOriginalBytes)} original`}
             icon={Database}
             trend={{ value: "24%", positive: true }}
+            valueClassName="text-primary"
           />
           <StatCard
             label="CO₂ avoided"
@@ -228,6 +230,7 @@ export default function ImpactPage() {
             sub="vs. uncompressed baseline"
             icon={Leaf}
             trend={{ value: "15%", positive: true }}
+            valueClassName="text-primary"
           />
           <StatCard
             label="Pesos saved"
@@ -235,13 +238,14 @@ export default function ImpactPage() {
             sub="at current institutional rates"
             icon={PhilippinePeso}
             trend={{ value: "20%", positive: true }}
+            valueClassName="text-primary"
           />
           <StatCard
             label="Files archived"
             value={stats.fileCount.toString()}
             sub="across all departments"
             icon={FileText}
-            trend={{ value: "11%", positive: false }}
+            valueClassName="text-primary"
           />
         </div>
       )}
@@ -356,7 +360,7 @@ export default function ImpactPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 md:gap-4">
               {KIND_ORDER.map((kind) => {
                 const entry = stats.byKind[kind] ?? {
                   count: 0,
@@ -368,7 +372,7 @@ export default function ImpactPage() {
                   <div
                     key={kind}
                     className={cn(
-                      "group relative flex items-center gap-4 overflow-hidden rounded-xl border border-border/70 bg-white p-4",
+                      "group relative flex items-center gap-3 overflow-hidden rounded-xl border border-border/70 bg-white p-4",
                       "transition-all duration-300 hover:border-primary/20 hover:shadow-sm"
                     )}
                   >
@@ -380,12 +384,12 @@ export default function ImpactPage() {
                      )}>
                         <Icon className="size-5" strokeWidth={1.8} />
                      </div>
-                     <div className="flex flex-1 flex-col gap-0.5">
-                        <div className="flex items-center justify-between">
+                     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <div className="flex flex-col items-start gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
                           <span className="text-[12.5px] font-semibold tracking-tight text-foreground uppercase">
                             {KIND_LABELS[kind]}
                           </span>
-                          <span className="text-[14px] font-bold tabular-nums text-foreground">
+                          <span className="whitespace-nowrap text-[14px] font-bold leading-none tabular-nums text-foreground">
                             {formatBytes(entry.bytesSaved)}
                           </span>
                         </div>

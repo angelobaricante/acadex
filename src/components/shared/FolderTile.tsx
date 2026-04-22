@@ -7,7 +7,7 @@ interface FolderTileProps {
   folder: Folder;
   fileCount: number;
   selected?: boolean;
-  onSelectChange?: (selected: boolean) => void;
+  onSelectChange?: (selected: boolean, shiftKey?: boolean) => void;
   onClick: () => void; // This will act as onOpen
 }
 
@@ -54,15 +54,28 @@ export default function FolderTile({
   const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (onSelectChange && !selected) {
-      onSelectChange(true);
-    } else {
-      onClick();
+    const shiftKey = "shiftKey" in e ? e.shiftKey : false;
+    if (shiftKey) {
+      onSelectChange?.(!selected, true);
+      return;
     }
+    if (!selected) onSelectChange?.(true, false);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onClick();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      onClick();
+      return;
+    }
+    if (e.key === " ") {
       handleClick(e);
     }
   };
@@ -72,6 +85,7 @@ export default function FolderTile({
       role="button"
       tabIndex={0}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onKeyDown={handleKeyDown}
       className={cn(
         "group/folder-tile flex h-[60px] w-full items-center gap-2.5 rounded-xl border bg-card pl-2.5 pr-1.5 text-left",

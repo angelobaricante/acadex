@@ -26,9 +26,10 @@ import { showDeleteToast } from "./deleteToast";
 interface FolderActionsMenuProps {
   folder: Folder;
   onOpen: () => void;
+  variant?: "tile" | "row";
 }
 
-export default function FolderActionsMenu({ folder, onOpen }: FolderActionsMenuProps) {
+export default function FolderActionsMenu({ folder, onOpen, variant = "tile" }: FolderActionsMenuProps) {
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
@@ -55,6 +56,19 @@ export default function FolderActionsMenu({ folder, onOpen }: FolderActionsMenuP
     onMouseDown: (e: React.MouseEvent) => e.preventDefault(),
   };
 
+  const triggerClass =
+    variant === "row"
+      ? cn(
+          "size-8 rounded-md text-muted-foreground/70",
+          "hover:bg-muted hover:text-foreground",
+          "opacity-70 group-hover/folder-row:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100",
+          "transition-opacity duration-150"
+        )
+      : cn(
+          "ml-auto size-7 rounded-md text-muted-foreground/70 opacity-0 transition-all duration-150",
+          "hover:bg-muted hover:text-foreground group-hover/folder-tile:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+        );
+
   return (<>
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -63,7 +77,7 @@ export default function FolderActionsMenu({ folder, onOpen }: FolderActionsMenuP
           variant="ghost"
           size="icon"
           aria-label="Folder actions"
-          className="ml-auto size-7 rounded-md text-muted-foreground/70 opacity-0 transition-all duration-150 hover:bg-muted hover:text-foreground group-hover/folder-tile:opacity-100 focus-visible:opacity-100 data-[state=open]:opacity-100"
+          className={triggerClass}
           {...stopProp}
         >
           <MoreVertical className="size-[14px]" strokeWidth={1.8} />

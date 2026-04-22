@@ -20,7 +20,7 @@ interface FileRowProps {
   file: ArchivedFile;
   folderTrail?: Folder[];
   selected?: boolean;
-  onSelectChange?: (checked: boolean) => void;
+  onSelectChange?: (checked: boolean, shiftKey?: boolean) => void;
 }
 
 function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: string } {
@@ -54,15 +54,28 @@ export default function FileRow({ file, folderTrail, selected, onSelectChange }:
   const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!selected) {
-      onSelectChange?.(true);
-    } else {
-      navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+    const shiftKey = "shiftKey" in e ? e.shiftKey : false;
+    if (shiftKey) {
+      onSelectChange?.(!selected, true);
+      return;
     }
+    if (!selected) onSelectChange?.(true, false);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+      return;
+    }
+    if (e.key === " ") {
       handleClick(e);
     }
   };
@@ -92,6 +105,7 @@ export default function FileRow({ file, folderTrail, selected, onSelectChange }:
         role="button"
         tabIndex={0}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onKeyDown={handleKeyDown}
         data-slot="file-row"
         className={cn(
