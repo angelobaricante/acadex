@@ -37,10 +37,11 @@ import { useShellSearch } from "@/components/layout/AppShell";
 import FileCard from "@/components/shared/FileCard";
 import FileRow from "@/components/shared/FileRow";
 import FolderTile from "@/components/shared/FolderTile";
+import FolderActionsMenu from "@/components/shared/FolderActionsMenu";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import { showDeleteToast } from "@/components/shared/deleteToast";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -49,6 +50,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -56,8 +58,13 @@ import { toast } from "sonner";
 type KindFilter = "all" | "folder" | FileKind;
 type SortKey = "recent" | "largest" | "most_saved";
 type ViewMode = "grid" | "list";
+type SelectOption<T extends string> = {
+  value: T;
+  label: string;
+  icon: LucideIcon;
+};
 
-const KIND_OPTIONS: Array<{ value: KindFilter; label: string; icon: LucideIcon }> = [
+const KIND_OPTIONS: SelectOption<KindFilter>[] = [
   { value: "all", label: "All types", icon: FileIcon },
   { value: "folder", label: "Folders", icon: FolderOpen },
   { value: "pdf", label: "PDFs", icon: FileText },
@@ -68,7 +75,7 @@ const KIND_OPTIONS: Array<{ value: KindFilter; label: string; icon: LucideIcon }
   { value: "other", label: "Other", icon: FileCode },
 ];
 
-const SORT_OPTIONS: Array<{ value: SortKey; label: string; icon: LucideIcon }> = [
+const SORT_OPTIONS: SelectOption<SortKey>[] = [
   { value: "recent", label: "Most recent", icon: Clock },
   { value: "largest", label: "Largest original", icon: HardDrive },
   { value: "most_saved", label: "Most saved", icon: TrendingDown },
@@ -101,6 +108,206 @@ const FOLDER_TINT = {
     ring: "ring-border",
   },
 } as const;
+
+function SectionHeading({ label }: { label: string }) {
+  return (
+    <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+      {label}
+    </span>
+  );
+}
+
+function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (view: ViewMode) => void }) {
+  return (
+    <div
+      role="group"
+      aria-label="View mode"
+      className="ml-1 flex items-center gap-0.5 rounded-lg border border-border/70 bg-[hsl(48_25%_98%)] p-0.5"
+    >
+      <button
+        type="button"
+        aria-label="Grid view"
+        aria-pressed={view === "grid"}
+        onClick={() => onChange("grid")}
+        className={cn(
+          "flex size-7 items-center justify-center rounded-md transition-colors duration-150",
+          view === "grid"
+            ? "bg-white text-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+      >
+        <LayoutGrid className="size-[14px]" strokeWidth={1.8} />
+      </button>
+      <button
+        type="button"
+        aria-label="List view"
+        aria-pressed={view === "list"}
+        onClick={() => onChange("list")}
+        className={cn(
+          "flex size-7 items-center justify-center rounded-md transition-colors duration-150",
+          view === "list"
+            ? "bg-white text-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        )}
+      >
+        <List className="size-[14px]" strokeWidth={1.8} />
+      </button>
+    </div>
+  );
+}
+
+function SelectMenu<T extends string>({
+  selected,
+  defaultLabel,
+  options,
+  onSelect,
+  leadingIcon: LeadingIcon,
+}: {
+  selected: T;
+  defaultLabel: string;
+  options: SelectOption<T>[];
+  onSelect: (value: T) => void;
+  leadingIcon: LucideIcon;
+}) {
+  const selectedLabel = options.find((opt) => opt.value === selected)?.label ?? defaultLabel;
+  const isDefault = selected === options[0].value;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn(
+            "h-8 gap-1.5 rounded-lg text-[13px] font-medium transition-colors",
+            isDefault
+              ? "bg-muted/50 hover:bg-muted"
+              : "border-transparent bg-primary/10 text-primary hover:bg-primary/20"
+          )}
+        >
+          <LeadingIcon className="size-[14px]" strokeWidth={2} />
+          <span>{isDefault ? defaultLabel : selectedLabel}</span>
+          <ChevronDown className={cn("size-[14px]", isDefault ? "text-muted-foreground/70" : "text-primary/70")} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-56 p-1">
+        {options.map((opt) => (
+          <DropdownMenuItem
+            key={opt.value}
+            onSelect={() => onSelect(opt.value)}
+            className={cn(
+              "flex items-center gap-2.5 px-2 py-1.5 text-[13px] cursor-pointer",
+              selected === opt.value && "font-medium text-primary bg-primary/5"
+            )}
+          >
+            <opt.icon className={cn("size-[16px]", selected === opt.value ? "text-primary" : "text-muted-foreground")} />
+            <span className="flex-1">{opt.label}</span>
+            {selected === opt.value && <Check className="size-[14px] text-primary" />}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function FolderListRow({
+  folder,
+  selected,
+  count,
+  onSelect,
+  onOpen,
+}: {
+  folder: Folder;
+  selected: boolean;
+  count: number;
+  onSelect: (checked: boolean) => void;
+  onOpen: () => void;
+}) {
+  const tint = FOLDER_TINT[folder.color];
+
+  return (
+    <div className="group/folder-row relative flex items-center">
+      <div
+        className={cn(
+          "absolute left-3.5 z-10 transition-opacity duration-150",
+          selected ? "opacity-100" : "opacity-0 group-hover/folder-row:opacity-100"
+        )}
+      >
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(checked) => onSelect(checked === true)}
+          className="border-primary/30 bg-white/60 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-white"
+        />
+      </div>
+
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!selected) {
+            onSelect(true);
+            return;
+          }
+          onOpen();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!selected) {
+              onSelect(true);
+              return;
+            }
+            onOpen();
+          }
+        }}
+        className={cn(
+          "grid flex-1 items-center gap-4 rounded-lg border py-2.5 pr-12 pl-[42px]",
+          "grid-cols-[24px_minmax(0,1fr)_96px_96px]",
+          "transition-colors duration-150",
+          selected
+            ? "border-primary/40 bg-primary/[0.02]"
+            : "border-transparent hover:border-border/80 hover:bg-white",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        )}
+      >
+        <span className={cn(
+          "flex size-6 shrink-0 items-center justify-center rounded-md ring-1 transition-colors duration-200",
+          tint.bg,
+          tint.ring,
+          tint.text
+        )}>
+          <FolderIcon className="size-[14px]" strokeWidth={1.8} />
+        </span>
+
+        <div className="min-w-0">
+          <span className="truncate text-[13.5px] font-medium text-foreground">
+            {folder.name}
+          </span>
+        </div>
+
+        <span className="text-right text-[12.5px] text-foreground tabular-nums">
+          {count} {count === 1 ? "file" : "files"}
+        </span>
+
+        <span className="text-right text-[12.5px] text-muted-foreground tabular-nums">
+          {formatDate(folder.createdAt)}
+        </span>
+      </div>
+
+      <div className="absolute right-2 top-1/2 -translate-y-1/2">
+        <FolderActionsMenu
+          folder={folder}
+          onOpen={onOpen}
+          variant="row"
+        />
+      </div>
+    </div>
+  );
+}
 
 const ROLE_HEADINGS = {
   student: {
@@ -401,11 +608,6 @@ export default function DashboardPage() {
     return sorted;
   }, [folders, search, sort, folderMetricsByFolder]);
 
-  const sortLabel =
-    SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Most recent";
-  const kindLabel =
-    KIND_OPTIONS.find((o) => o.value === kind)?.label ?? "All types";
-
   const showFoldersStrip = displayedFolders !== null && displayedFolders.length > 0;
   const showFoldersSection = kind === "all" || kind === "folder";
   const showFilesSection = kind !== "folder";
@@ -693,118 +895,26 @@ export default function DashboardPage() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <div
-            role="group"
-            aria-label="View mode"
-            className="ml-1 flex items-center gap-0.5 rounded-lg border border-border/70 bg-[hsl(48_25%_98%)] p-0.5"
-          >
-            <button
-              type="button"
-              aria-label="Grid view"
-              aria-pressed={view === "grid"}
-              onClick={() => setView("grid")}
-              className={cn(
-                "flex size-7 items-center justify-center rounded-md transition-colors duration-150",
-                view === "grid"
-                  ? "bg-white text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <LayoutGrid className="size-[14px]" strokeWidth={1.8} />
-            </button>
-            <button
-              type="button"
-              aria-label="List view"
-              aria-pressed={view === "list"}
-              onClick={() => setView("list")}
-              className={cn(
-                "flex size-7 items-center justify-center rounded-md transition-colors duration-150",
-                view === "list"
-                  ? "bg-white text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              <List className="size-[14px]" strokeWidth={1.8} />
-            </button>
-          </div>
+          <ViewToggle view={view} onChange={setView} />
         </div>
       </div>
 
       {/* Filters row */}
       <div className="flex w-full flex-wrap items-center gap-2">
-        {/* Type filter dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn(
-                "h-8 gap-1.5 rounded-lg text-[13px] font-medium transition-colors",
-                kind === "all"
-                  ? "bg-muted/50 hover:bg-muted"
-                  : "border-transparent bg-primary/10 text-primary hover:bg-primary/20"
-              )}
-            >
-              <File className="size-[14px]" strokeWidth={2} />
-              <span>{kind === "all" ? "Type" : kindLabel}</span>
-              <ChevronDown className={cn("size-[14px]", kind === "all" ? "text-muted-foreground/70" : "text-primary/70")} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56 p-1">
-            {KIND_OPTIONS.map((opt) => (
-              <DropdownMenuItem
-                key={opt.value}
-                onSelect={() => setKind(opt.value)}
-                className={cn(
-                  "flex items-center gap-2.5 px-2 py-1.5 text-[13px] cursor-pointer",
-                  kind === opt.value && "font-medium text-primary bg-primary/5"
-                )}
-              >
-                <opt.icon className={cn("size-[16px]", kind === opt.value ? "text-primary" : "text-muted-foreground")} />
-                <span className="flex-1">{opt.label}</span>
-                {kind === opt.value && <Check className="size-[14px] text-primary" />}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        {/* Sort dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className={cn(
-                "h-8 gap-1.5 rounded-lg text-[13px] font-medium transition-colors",
-                sort === "recent"
-                  ? "bg-muted/50 hover:bg-muted"
-                  : "border-transparent bg-primary/10 text-primary hover:bg-primary/20"
-              )}
-            >
-              <ArrowUpDown className="size-[14px]" strokeWidth={2} />
-              <span>{sort === "recent" ? "Sort" : sortLabel}</span>
-              <ChevronDown className={cn("size-[14px]", sort === "recent" ? "text-muted-foreground/70" : "text-primary/70")} />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56 p-1">
-            {SORT_OPTIONS.map((opt) => (
-              <DropdownMenuItem
-                key={opt.value}
-                onSelect={() => setSort(opt.value)}
-                className={cn(
-                  "flex items-center gap-2.5 px-2 py-1.5 text-[13px] cursor-pointer",
-                  sort === opt.value && "font-medium text-primary bg-primary/5"
-                )}
-              >
-                <opt.icon className={cn("size-[16px]", sort === opt.value ? "text-primary" : "text-muted-foreground")} />
-                <span className="flex-1">{opt.label}</span>
-                {sort === opt.value && <Check className="size-[14px] text-primary" />}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <SelectMenu
+          selected={kind}
+          defaultLabel="Type"
+          options={KIND_OPTIONS}
+          onSelect={setKind}
+          leadingIcon={File}
+        />
+        <SelectMenu
+          selected={sort}
+          defaultLabel="Sort"
+          options={SORT_OPTIONS}
+          onSelect={setSort}
+          leadingIcon={ArrowUpDown}
+        />
       </div>
 
       {/* Folders grid */}
@@ -818,9 +928,7 @@ export default function DashboardPage() {
 
         return (
           <section className="flex flex-col gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              Folders
-            </span>
+            <SectionHeading label="Folders" />
 
             {view === "grid" ? (
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
@@ -840,52 +948,15 @@ export default function DashboardPage() {
                 {visibleFolders.map((folder) => {
                   const selected = selectedFolderIds.has(folder.id);
                   const count = fileCountsByFolder[folder.id] ?? 0;
-                  const tint = FOLDER_TINT[folder.color];
                   return (
-                    <button
+                    <FolderListRow
                       key={folder.id}
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!selected) {
-                          toggleFolderSelection(folder.id, true);
-                          return;
-                        }
-                        handleOpenFolder(folder);
-                      }}
-                      className={cn(
-                        "group/folder-row flex w-full items-center gap-3 rounded-lg border bg-card px-3 py-2 text-left",
-                        "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
-                        "transition-colors duration-150",
-                        selected
-                          ? "border-primary/40 bg-primary/[0.03]"
-                          : "border-border/70 hover:border-primary/30"
-                      )}
-                    >
-                      <span className={cn(
-                        "flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-colors duration-200",
-                        tint.bg,
-                        tint.ring,
-                        tint.text
-                      )}>
-                        <FolderIcon className="size-[14px]" strokeWidth={1.8} />
-                      </span>
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate text-[13.5px] font-medium leading-tight text-foreground">
-                          {folder.name}
-                        </span>
-                        <span className="mt-0.5 text-[11.5px] text-muted-foreground tabular-nums">
-                          {count} {count === 1 ? "file" : "files"}
-                        </span>
-                      </span>
-                      {selected ? (
-                        <span className="flex size-5 items-center justify-center rounded-full bg-primary text-white">
-                          <Check className="size-[12px]" strokeWidth={2.8} />
-                        </span>
-                      ) : (
-                        <ChevronRight className="size-[14px] text-muted-foreground/60" strokeWidth={1.8} />
-                      )}
-                    </button>
+                      folder={folder}
+                      selected={selected}
+                      count={count}
+                      onSelect={(checked) => toggleFolderSelection(folder.id, checked)}
+                      onOpen={() => handleOpenFolder(folder)}
+                    />
                   );
                 })}
               </div>
@@ -931,11 +1002,9 @@ export default function DashboardPage() {
       )}
 
       {showFilesSection && (
-        <>
+        <section className="flex flex-col gap-2">
           <div className="flex items-center">
-            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              Files
-            </span>
+            <SectionHeading label="Files" />
           </div>
 
           {/* Results */}
@@ -1030,7 +1099,7 @@ export default function DashboardPage() {
               )}
             </>
           )}
-        </>
+        </section>
       )}
 
       {/* Bulk Actions Bar */}
