@@ -121,6 +121,7 @@ export default function DashboardPage() {
   const [sort, setSort] = useState<SortKey>("recent");
   const [view, setView] = useState<ViewMode>("grid");
   const [folders, setFolders] = useState<Folder[] | null>(null);
+  const [allFolders, setAllFolders] = useState<Folder[] | null>(null);
   const [allFiles, setAllFiles] = useState<ArchivedFile[] | null>(null);
   const [folderTrail, setFolderTrail] = useState<Folder[]>([]);
   const [displayLimit, setDisplayLimit] = useState(16);
@@ -169,6 +170,18 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [foldersVersion, uploadsVersion, activeFolder]);
+
+  // Keep a flat snapshot of all folders so folder tiles can show deep counts.
+  useEffect(() => {
+    let cancelled = false;
+    listFolders().then((result) => {
+      if (cancelled) return;
+      setAllFolders(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [foldersVersion]);
 
   // Fetch the full file list (respecting ownerId) once per data-change event.
   // All filtering/sorting below is client-side so tab switches are instant —
@@ -234,14 +247,43 @@ export default function DashboardPage() {
 
   const fileCountsByFolder = useMemo(() => {
     const counts: Record<string, number> = {};
-    if (!allFiles) return counts;
-    for (const file of allFiles) {
-      if (file.folderId) {
-        counts[file.folderId] = (counts[file.folderId] ?? 0) + 1;
-      }
+    if (!allFiles || !allFolders) return counts;
+
+    const childFoldersByParent = new Map<string, string[]>();
+    for (const folder of allFolders) {
+      const parentFolderId = folder.parentFolderId ?? null;
+      if (parentFolderId === null) continue;
+      const siblings = childFoldersByParent.get(parentFolderId) ?? [];
+      siblings.push(folder.id);
+      childFoldersByParent.set(parentFolderId, siblings);
     }
+
+    const directFileCounts = new Map<string, number>();
+    for (const file of allFiles) {
+      if (!file.folderId) continue;
+      directFileCounts.set(file.folderId, (directFileCounts.get(file.folderId) ?? 0) + 1);
+    }
+
+    const folderCountCache = new Map<string, number>();
+    const countFolderFiles = (folderId: string): number => {
+      const cached = folderCountCache.get(folderId);
+      if (cached !== undefined) return cached;
+
+      let total = directFileCounts.get(folderId) ?? 0;
+      for (const childFolderId of childFoldersByParent.get(folderId) ?? []) {
+        total += countFolderFiles(childFolderId);
+      }
+
+      folderCountCache.set(folderId, total);
+      return total;
+    };
+
+    for (const folder of allFolders) {
+      counts[folder.id] = countFolderFiles(folder.id);
+    }
+
     return counts;
-  }, [allFiles]);
+  }, [allFiles, allFolders]);
 
   const sortLabel =
     SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Most recent";
