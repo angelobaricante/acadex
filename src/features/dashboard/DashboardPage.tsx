@@ -373,7 +373,25 @@ export default function DashboardPage() {
   const [folderGridColumns, setFolderGridColumns] = useState(5);
 
   const totalSelected = selectedFileIds.size + selectedFolderIds.size;
-  const activeFolder = folderTrail.length > 0 ? folderTrail[folderTrail.length - 1] : null;
+  const liveFolderById = useMemo(() => {
+    if (!allFolders) return null;
+    return new Map(allFolders.map((folder) => [folder.id, folder]));
+  }, [allFolders]);
+
+  const normalizedFolderTrail = useMemo(() => {
+    if (!liveFolderById) return folderTrail;
+
+    const nextTrail: Folder[] = [];
+    for (const folder of folderTrail) {
+      const liveFolder = liveFolderById.get(folder.id);
+      if (!liveFolder) break;
+      nextTrail.push(liveFolder);
+    }
+
+    return nextTrail;
+  }, [folderTrail, liveFolderById]);
+
+  const activeFolder = normalizedFolderTrail.length > 0 ? normalizedFolderTrail[normalizedFolderTrail.length - 1] : null;
 
   useEffect(() => {
     const state = location.state as { folderTrail?: Folder[] } | null;
@@ -459,6 +477,63 @@ export default function DashboardPage() {
       cancelled = true;
     };
   }, [ownerId, uploadsVersion, foldersVersion]);
+
+  // Keep selection sets in sync with live data so deleted items don't leave stale FAB counts.
+  useEffect(() => {
+    if (!allFolders) return;
+    const validFolderIds = new Set(allFolders.map((folder) => folder.id));
+    setSelectedFolderIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (validFolderIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [allFolders]);
+
+  useEffect(() => {
+    if (!liveFolderById) return;
+
+    setFolderTrail((prev) => {
+      const nextTrail: Folder[] = [];
+      for (const folder of prev) {
+        const liveFolder = liveFolderById.get(folder.id);
+        if (!liveFolder) break;
+        nextTrail.push(liveFolder);
+      }
+
+      if (
+        nextTrail.length === prev.length &&
+        nextTrail.every((folder, index) => folder.id === prev[index].id)
+      ) {
+        return prev;
+      }
+
+      return nextTrail;
+    });
+  }, [liveFolderById]);
+
+  useEffect(() => {
+    if (!allFiles) return;
+    const validFileIds = new Set(allFiles.map((file) => file.id));
+    setSelectedFileIds((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const id of prev) {
+        if (validFileIds.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [allFiles]);
 
   // Derive the displayed list via memo — no network calls on filter changes.
   const files = useMemo<ArchivedFile[] | null>(() => {
@@ -611,6 +686,26 @@ export default function DashboardPage() {
   const showFoldersStrip = displayedFolders !== null && displayedFolders.length > 0;
   const showFoldersSection = kind === "all" || kind === "folder";
   const showFilesSection = kind !== "folder";
+  const isFoldersLoading = showFoldersSection && displayedFolders === null;
+  const isFilesLoading = showFilesSection && files === null;
+  const hasFolders = displayedFolders !== null && displayedFolders.length > 0;
+  const hasFiles = files !== null && files.length > 0;
+  const showMergedEmptyState =
+    showFoldersSection &&
+    showFilesSection &&
+    !isFoldersLoading &&
+    !isFilesLoading &&
+    !hasFolders &&
+    !hasFiles;
+  const showFolderEmptyState =
+    showFoldersSection &&
+    !showFoldersStrip &&
+    !showMergedEmptyState &&
+    !(showFilesSection && hasFiles);
+  const showFilesContentSection =
+    showFilesSection &&
+    !showMergedEmptyState &&
+    !(showFoldersSection && hasFolders && !hasFiles);
 
   const canDeleteActiveFolder =
     activeFolder !== null &&
@@ -780,8 +875,8 @@ export default function DashboardPage() {
               >
                 All files
               </button>
-              {folderTrail.map((folder, index) => {
-                const isLast = index === folderTrail.length - 1;
+              {normalizedFolderTrail.map((folder, index) => {
+                const isLast = index === normalizedFolderTrail.length - 1;
                 return (
                   <div key={folder.id} className="flex min-w-0 items-center gap-1.5">
                     <ChevronRight
@@ -978,7 +1073,7 @@ export default function DashboardPage() {
         );
       })()}
 
-      {showFoldersSection && !showFoldersStrip && (
+      {showFolderEmptyState && (
         <EmptyState
           icon={<FolderOpen />}
           title={search ? "No folders match your search" : "No folders yet"}
@@ -987,21 +1082,53 @@ export default function DashboardPage() {
               ? "Try clearing the search or selecting another type."
               : "Create a folder to organize your archive."
           }
+        />
+      )}
+
+      {showMergedEmptyState && (
+        <EmptyState
+          icon={<FolderOpen />}
+          title={
+            activeFolder ? (
+              <>
+                This folder is empty: <strong>{activeFolder.name}</strong>
+              </>
+            ) : (
+              "Your archive is empty"
+            )
+          }
+          description={
+            activeFolder
+              ? "Upload a file or create a subfolder to get started here."
+              : "Create your first folder or upload your first file to get started."
+          }
           action={
-            <Button
-              type="button"
-              size="sm"
-              onClick={openNewFolder}
-              className="h-8 gap-1.5 rounded-lg border-transparent bg-[#2d8a56] px-3 text-[13px] font-medium text-white hover:bg-[#247045]"
-            >
-              <FolderOpen className="size-[14px]" />
-              <span>New folder</span>
-            </Button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <Button
+                type="button"
+                size="sm"
+                onClick={openUpload}
+                className="h-8 gap-1.5 rounded-lg border-transparent bg-[#2d8a56] px-3 text-[13px] font-medium text-white hover:bg-[#247045]"
+              >
+                <Upload className="size-[14px]" />
+                <span>Upload a file</span>
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={openNewFolder}
+                className="h-8 gap-1.5 rounded-lg px-3 text-[13px] font-medium"
+              >
+                <FolderOpen className="size-[14px]" />
+                <span>New folder</span>
+              </Button>
+            </div>
           }
         />
       )}
 
-      {showFilesSection && (
+      {showFilesContentSection && (
         <section className="flex flex-col gap-2">
           <div className="flex items-center">
             <SectionHeading label="Files" />
@@ -1030,7 +1157,9 @@ export default function DashboardPage() {
               icon={<FolderOpen />}
               title={
                 activeFolder
-                  ? `Nothing in '${activeFolder.name}' yet`
+                  ? <>
+                      This folder is empty: <strong>{activeFolder.name}</strong>
+                    </>
                   : filtersActive
                     ? "No files match your filters"
                     : emptyCopy.title
@@ -1041,23 +1170,6 @@ export default function DashboardPage() {
                   : filtersActive
                     ? "Try clearing the search or switching file type."
                     : emptyCopy.description
-              }
-              action={
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={openUpload}
-                  className="h-8 gap-1.5 rounded-lg border-transparent bg-[#2d8a56] px-3 text-[13px] font-medium text-white hover:bg-[#247045]"
-                >
-                  <Upload className="size-[14px]" />
-                  <span>
-                    {activeFolder
-                      ? "Upload a file"
-                      : filtersActive
-                        ? "Upload a file"
-                        : emptyCopy.cta}
-                  </span>
-                </Button>
               }
             />
           ) : view === "grid" ? (
