@@ -86,3 +86,48 @@
     animation: pop-out 0.15s ease-out forwards;
   }
 }
+
+/* ─── File preview loader ────────────────────────────────────────────── */
+@keyframes preview-arc-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes preview-halo-breathe {
+  0%, 100% { transform: scale(1);    opacity: 0.55; }
+  50%      { transform: scale(1.08); opacity: 0.9;  }
+}
+
+@keyframes preview-icon-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+
+@keyframes preview-reveal {
+  from { opacity: 0; transform: scale(0.985) translateY(6px); filter: blur(6px); }
+  to   { opacity: 1; transform: scale(1)     translateY(0);   filter: blur(0); }
+}
+
+@keyframes preview-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.preview-loader-halo {
+  animation: preview-halo-breathe 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.preview-loader-arc {
+  animation: preview-arc-spin 1.15s linear infinite;
+}
+
+.preview-loader-icon {
+  animation: preview-icon-float 2.4s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.preview-loader-exit {
+  animation: preview-fade-out 0.28s ease-out forwards;
+}
+
+.preview-reveal {
+  animation: preview-reveal 0.52s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
