@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, LogOut, Search, X } from "lucide-react";
+import { LogOut, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,16 +13,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useSessionStore } from "@/lib/store";
-import { mockSignIn, signOut } from "@/lib/api";
+import { signOut } from "@/lib/api";
 import type { Role } from "@/lib/types";
-import { cn } from "@/lib/utils";
 import { useShellSearch } from "./AppShell";
 
+/*
 const ROLES: Array<{ value: Role; label: string }> = [
   { value: "student", label: "Student" },
   { value: "faculty", label: "Faculty" },
   { value: "admin", label: "Admin" },
 ];
+*/
 
 function initialsOf(name: string): string {
   const parts = name
@@ -50,11 +51,13 @@ export default function Topbar() {
   const showSuggestions = isFocused && !search;
   const suggestedTags = ["CS101", "Admin", "Project", "Thesis", "Textbook", "Lab", "Exam"];
 
+  /*
   async function handleSwitchRole(role: Role) {
     if (user?.role === role) return;
     const next = await mockSignIn(role);
     setUser(next);
   }
+  */
 
   async function handleSignOut() {
     await signOut();
@@ -158,6 +161,7 @@ export default function Topbar() {
                 </div>
               </div>
               <DropdownMenuSeparator />
+              {/*
               <div className="px-2 pb-1 pt-1.5">
                 <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                   Switch demo role
@@ -170,7 +174,7 @@ export default function Topbar() {
                     key={value}
                     onSelect={() => handleSwitchRole(value)}
                     className={cn(
-                      "gap-2 px-2 py-1.5 text-[13px]",
+                      "cursor-pointer gap-2 px-2 py-1.5 text-[13px]",
                       active && "font-medium text-primary"
                     )}
                   >
@@ -182,9 +186,10 @@ export default function Topbar() {
                 );
               })}
               <DropdownMenuSeparator />
+              */}
               <DropdownMenuItem
                 onSelect={handleSignOut}
-                className="gap-2 px-2 py-1.5 text-[13px]"
+                className="cursor-pointer gap-2 px-2 py-1.5 text-[13px]"
               >
                 <LogOut className="size-[14px] text-muted-foreground" />
                 <span>Sign out</span>

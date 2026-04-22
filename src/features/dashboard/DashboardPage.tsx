@@ -553,7 +553,7 @@ export default function DashboardPage() {
             <DropdownMenuContent align="end" className="w-52 p-1">
               <DropdownMenuItem
                 onSelect={openNewFolder}
-                className="gap-2.5 px-2.5 py-2 text-[13px]"
+                className="cursor-pointer gap-2.5 px-2.5 py-2 text-[13px]"
               >
                 <FolderOpen className="size-[15px] text-muted-foreground" strokeWidth={1.8} />
                 <span>New Folder</span>
@@ -561,14 +561,14 @@ export default function DashboardPage() {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onSelect={openUpload}
-                className="gap-2.5 px-2.5 py-2 text-[13px]"
+                className="cursor-pointer gap-2.5 px-2.5 py-2 text-[13px]"
               >
                 <Upload className="size-[15px] text-muted-foreground" strokeWidth={1.8} />
                 <span>File Upload</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={openFolderUpload}
-                className="gap-2.5 px-2.5 py-2 text-[13px]"
+                className="cursor-pointer gap-2.5 px-2.5 py-2 text-[13px]"
               >
                 <FolderUp className="size-[15px] text-muted-foreground" strokeWidth={1.8} />
                 <span>Folder Upload</span>
