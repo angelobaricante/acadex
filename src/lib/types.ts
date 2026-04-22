@@ -56,6 +56,9 @@ export interface ImpactStats {
   co2KgAvoided: number;
   pesosSaved: number;
   fileCount: number;
+  storageSavedMoMPercent: number;
+  co2MoMPercent: number;
+  pesosMoMPercent: number;
   byKind: Record<FileKind, { count: number; bytesSaved: number }>;
   trend: Array<{ date: string; bytesSaved: number }>;
 }

@@ -34,9 +34,12 @@ import { supabase } from "./supabaseClient";
 import {
   mockFiles,
   mockFolders,
-  mockImpact,
   mockShareLinks,
 } from "./mockData";
+
+const COST_PER_GB_USD = 0.02318;
+const USD_TO_PHP = 56.5;
+const CO2_KG_PER_GB = 0.0004;
 
 const LATENCY_MIN = 200;
 const LATENCY_MAX = 400;
@@ -769,5 +772,143 @@ export async function deleteFolder(id: string): Promise<void> {
 // --- Impact ---
 export async function getImpactStats(): Promise<ImpactStats> {
   await sleep();
-  return mockImpact;
+
+  try {
+    const { data, error } = await supabase
+      .from("files")
+      .select("original_size_bytes, compressed_size_bytes, mime_type, uploaded_at")
+      .eq("is_deleted_on_drive", false);
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = (data ?? []) as Array<{
+      original_size_bytes: number | null;
+      compressed_size_bytes: number | null;
+      mime_type: string | null;
+      uploaded_at: string;
+    }>;
+
+    const now = new Date();
+    const startOfThisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const thirtyDaysAgo = new Date(now);
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 29);
+    thirtyDaysAgo.setHours(0, 0, 0, 0);
+
+    const byKind: ImpactStats["byKind"] = {
+      pdf: { count: 0, bytesSaved: 0 },
+      docx: { count: 0, bytesSaved: 0 },
+      pptx: { count: 0, bytesSaved: 0 },
+      image: { count: 0, bytesSaved: 0 },
+      video: { count: 0, bytesSaved: 0 },
+      other: { count: 0, bytesSaved: 0 },
+    };
+
+    const trendByDay: Record<string, number> = {};
+
+    let totalOriginalBytes = 0;
+    let totalStoredBytes = 0;
+    let thisMonthSaved = 0;
+    let lastMonthSaved = 0;
+
+    const detectKindFromMime = (mimeType: string | null): FileKind => {
+      if (!mimeType) return "other";
+      if (mimeType === "application/pdf") return "pdf";
+      if (
+        mimeType === "application/msword" ||
+        mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ) return "docx";
+      if (
+        mimeType === "application/vnd.ms-powerpoint" ||
+        mimeType === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+      ) return "pptx";
+      if (mimeType.startsWith("image/")) return "image";
+      if (mimeType.startsWith("video/")) return "video";
+      return "other";
+    };
+
+    for (const row of rows) {
+      const original = Math.max(0, row.original_size_bytes ?? 0);
+      const compressed = Math.max(0, row.compressed_size_bytes ?? 0);
+      const saved = original - compressed;
+
+      totalOriginalBytes += original;
+      totalStoredBytes += compressed;
+
+      const kind = detectKindFromMime(row.mime_type);
+      byKind[kind].count += 1;
+      byKind[kind].bytesSaved += saved;
+
+      const uploadedAt = new Date(row.uploaded_at);
+      if (!Number.isNaN(uploadedAt.getTime())) {
+        if (uploadedAt >= thirtyDaysAgo) {
+          const day = uploadedAt.toISOString().slice(0, 10);
+          trendByDay[day] = (trendByDay[day] ?? 0) + saved;
+        }
+
+        if (uploadedAt >= startOfThisMonth) {
+          thisMonthSaved += saved;
+        } else if (uploadedAt >= startOfLastMonth && uploadedAt < startOfThisMonth) {
+          lastMonthSaved += saved;
+        }
+      }
+    }
+
+    const trend: ImpactStats["trend"] = [];
+    for (let i = 0; i < 30; i += 1) {
+      const day = new Date(thirtyDaysAgo);
+      day.setDate(thirtyDaysAgo.getDate() + i);
+      const key = day.toISOString().slice(0, 10);
+      trend.push({
+        date: key,
+        bytesSaved: trendByDay[key] ?? 0,
+      });
+    }
+
+    const bytesSaved = totalOriginalBytes - totalStoredBytes;
+    const savedGB = bytesSaved / 1e9;
+    const co2KgAvoided = savedGB * CO2_KG_PER_GB;
+    const pesosSaved = savedGB * COST_PER_GB_USD * USD_TO_PHP;
+
+    const storageSavedMoMPercent =
+      lastMonthSaved === 0 ? 100 : ((thisMonthSaved - lastMonthSaved) / lastMonthSaved) * 100;
+
+    return {
+      totalOriginalBytes,
+      totalStoredBytes,
+      bytesSaved,
+      co2KgAvoided,
+      pesosSaved,
+      fileCount: rows.length,
+      storageSavedMoMPercent,
+      co2MoMPercent: storageSavedMoMPercent,
+      pesosMoMPercent: storageSavedMoMPercent,
+      byKind,
+      trend,
+    };
+  } catch {
+    return {
+      totalOriginalBytes: 0,
+      totalStoredBytes: 0,
+      bytesSaved: 0,
+      co2KgAvoided: 0,
+      pesosSaved: 0,
+      fileCount: 0,
+      storageSavedMoMPercent: 0,
+      co2MoMPercent: 0,
+      pesosMoMPercent: 0,
+      byKind: {
+        pdf: { count: 0, bytesSaved: 0 },
+        docx: { count: 0, bytesSaved: 0 },
+        pptx: { count: 0, bytesSaved: 0 },
+        image: { count: 0, bytesSaved: 0 },
+        video: { count: 0, bytesSaved: 0 },
+        other: { count: 0, bytesSaved: 0 },
+      },
+      trend: [],
+    };
+  }
 }

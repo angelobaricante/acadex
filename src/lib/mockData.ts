@@ -86,6 +86,9 @@ function computeImpact(files: ArchivedFile[]): ImpactStats {
     co2KgAvoided: Math.round((bytesSaved / 1_073_741_824) * 0.5 * 100) / 100,
     pesosSaved: Math.round((bytesSaved / 1_073_741_824) * 23),
     fileCount: files.length,
+    storageSavedMoMPercent: 0,
+    co2MoMPercent: 0,
+    pesosMoMPercent: 0,
     byKind,
     trend,
   };

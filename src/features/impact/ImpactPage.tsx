@@ -175,6 +175,18 @@ function BreakdownSkeleton() {
 export default function ImpactPage() {
   const [stats, setStats] = useState<ImpactStats | null>(null);
 
+  const pesosFormatter = new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  });
+
+  const formatDelta = (percent: number) => {
+    const absValue = Math.abs(percent);
+    return `${Math.round(absValue)}%`;
+  };
+
   useEffect(() => {
     let cancelled = false;
     getImpactStats().then((result) => {
@@ -188,9 +200,27 @@ export default function ImpactPage() {
 
   const trendData =
     stats?.trend.map((t) => ({
-      date: t.date.slice(5),
+      date: t.date,
       bytesSaved: t.bytesSaved,
     })) ?? [];
+
+  // Display helpers: CO₂ as grams when very small, pesos with up to 4 decimals
+  const co2Display = stats
+    ? (() => {
+        const kg = stats.co2KgAvoided;
+        if (kg >= 0.001) return `${kg.toFixed(4)} kg`;
+        const grams = kg * 1000;
+        if (grams < 0.01) return "< 0.01 g";
+        if (grams < 1) return `${grams.toFixed(2)} g`;
+        return `${grams.toFixed(2)} g`;
+      })()
+    : "0.0000 kg";
+
+  const pesosDisplay = stats
+    ? stats.pesosSaved < 0.01
+      ? `< ${pesosFormatter.format(0.01)}`
+      : pesosFormatter.format(stats.pesosSaved)
+    : pesosFormatter.format(0);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-8 md:py-10">
@@ -221,23 +251,32 @@ export default function ImpactPage() {
             value={formatBytes(stats.bytesSaved)}
             sub={`of ${formatBytes(stats.totalOriginalBytes)} original`}
             icon={Database}
-            trend={{ value: "24%", positive: true }}
+            trend={{
+              value: formatDelta(stats.storageSavedMoMPercent),
+              positive: stats.storageSavedMoMPercent >= 0,
+            }}
             valueClassName="text-primary"
           />
           <StatCard
             label="CO₂ avoided"
-            value={`${stats.co2KgAvoided} kg`}
+            value={co2Display}
             sub="vs. uncompressed baseline"
             icon={Leaf}
-            trend={{ value: "15%", positive: true }}
+            trend={{
+              value: formatDelta(stats.co2MoMPercent),
+              positive: stats.co2MoMPercent >= 0,
+            }}
             valueClassName="text-primary"
           />
           <StatCard
             label="Pesos saved"
-            value={`₱${stats.pesosSaved.toLocaleString()}`}
+            value={pesosDisplay}
             sub="at current institutional rates"
             icon={PhilippinePeso}
-            trend={{ value: "20%", positive: true }}
+            trend={{
+              value: formatDelta(stats.pesosMoMPercent),
+              positive: stats.pesosMoMPercent >= 0,
+            }}
             valueClassName="text-primary"
           />
           <StatCard
@@ -300,6 +339,7 @@ export default function ImpactPage() {
                     }}
                     tickLine={false}
                     axisLine={false}
+                    tickFormatter={(value) => String(value).slice(5)}
                     interval="preserveStartEnd"
                     minTickGap={24}
                   />
@@ -330,9 +370,10 @@ export default function ImpactPage() {
                       color: "hsl(var(--muted-foreground))",
                       fontSize: 11,
                     }}
+                    labelFormatter={(value) => `${String(value).slice(5)} | Saved`}
                     formatter={(value) => [
                       formatBytes(Number(value)),
-                      "Saved",
+                      "Bytes",
                     ]}
                   />
                   <Area
