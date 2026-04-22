@@ -135,6 +135,7 @@ export default function DashboardPage() {
   // All filtering/sorting below is client-side so tab switches are instant —
   // the API call only happens on user change, upload, delete, or folder move.
   useEffect(() => {
+    if (!user) return;
     let cancelled = false;
     listFiles({ ownerId }).then((result) => {
       if (cancelled) return;
@@ -143,7 +144,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [ownerId, uploadsVersion, foldersVersion]);
+  }, [user, ownerId, uploadsVersion, foldersVersion]);
 
   // Derive the displayed list via memo — no network calls on filter changes.
   const files = useMemo<ArchivedFile[] | null>(() => {

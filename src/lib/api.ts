@@ -9,12 +9,14 @@ import type {
   SharePermission,
   User,
 } from "./types";
+import { driveDelete, driveList, driveUpload } from "./driveApi";
+import { getAccessToken, signInWithGoogle, signOutFromGoogle } from "./googleAuth";
+import { compressFile } from "./compression/compressFile";
 import {
   mockFiles,
   mockFolders,
   mockImpact,
   mockShareLinks,
-  mockUsers,
 } from "./mockData";
 
 const LATENCY_MIN = 200;
@@ -44,25 +46,35 @@ export function __resetApiStateForTests(): void {
 
 // --- Auth ---
 export async function mockSignIn(role: Role): Promise<User> {
-  await sleep();
-  const user =
-    role === "student"
-      ? mockUsers.student_maria
-      : role === "faculty"
-        ? mockUsers.faculty_cruz
-        : mockUsers.admin_reyes;
+  const profile = await signInWithGoogle();
+
+  const user: User = {
+    id: profile.sub,
+    name: profile.name,
+    email: profile.email,
+    avatarUrl: profile.picture,
+    role,
+  };
+
+  sessionStorage.setItem("acadex_user", JSON.stringify(user));
   currentUser = user;
   return user;
 }
 
 export async function signOut(): Promise<void> {
-  await sleep();
+  signOutFromGoogle();
+  sessionStorage.removeItem("acadex_user");
   currentUser = null;
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  await sleep();
-  return currentUser;
+  if (currentUser) return currentUser;
+  const saved = sessionStorage.getItem("acadex_user");
+  if (saved) {
+    currentUser = JSON.parse(saved) as User;
+    return currentUser;
+  }
+  return null;
 }
 
 // --- Files ---
@@ -76,8 +88,35 @@ export interface ListFilesParams {
 }
 
 export async function listFiles(params: ListFilesParams = {}): Promise<ArchivedFile[]> {
-  await sleep();
-  let result = [...files];
+  let baseFiles: ArchivedFile[];
+  let loadedFromDrive = false;
+  try {
+    getAccessToken();
+    baseFiles = await driveList(params.query);
+    loadedFromDrive = true;
+  } catch {
+    baseFiles = [...files];
+  }
+
+  if (loadedFromDrive) {
+    const previousById = new Map(files.map((file) => [file.id, file]));
+    baseFiles = baseFiles.map((driveFile) => {
+      const previous = previousById.get(driveFile.id);
+      if (!previous) return driveFile;
+
+      return {
+        ...driveFile,
+        ownerId: previous.ownerId,
+        originalBytes: previous.originalBytes,
+        storedBytes: previous.storedBytes,
+        compressionRatio: previous.compressionRatio,
+        tags: previous.tags,
+        folderId: previous.folderId,
+      };
+    });
+  }
+
+  let result = [...baseFiles];
   if (params.kind) result = result.filter((f) => f.kind === params.kind);
   if (params.ownerId) result = result.filter((f) => f.ownerId === params.ownerId);
   if (params.folderId === null) {
@@ -89,12 +128,6 @@ export async function listFiles(params: ListFilesParams = {}): Promise<ArchivedF
     const t = params.tag.toLowerCase();
     result = result.filter((f) => f.tags.some((tag) => tag.toLowerCase() === t));
   }
-  if (params.query) {
-    const q = params.query.toLowerCase();
-    result = result.filter(
-      (f) => f.name.toLowerCase().includes(q) || f.tags.some((t) => t.toLowerCase().includes(q))
-    );
-  }
   const sort = params.sort ?? "recent";
   if (sort === "recent") {
     result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -105,6 +138,7 @@ export async function listFiles(params: ListFilesParams = {}): Promise<ArchivedF
       (a, b) => b.originalBytes - b.storedBytes - (a.originalBytes - a.storedBytes)
     );
   }
+  files = result.map((f) => ({ ...f }));
   return result;
 }
 
@@ -115,48 +149,29 @@ export async function getFile(id: string): Promise<ArchivedFile> {
   return file;
 }
 
-function detectKind(file: File): { kind: FileKind; mime: string } {
-  const mime = file.type || "application/octet-stream";
-  if (mime === "application/pdf") return { kind: "pdf", mime };
-  if (mime.startsWith("image/")) return { kind: "image", mime };
-  if (mime.startsWith("video/")) return { kind: "video", mime };
-  if (file.name.endsWith(".docx")) return { kind: "docx", mime };
-  if (file.name.endsWith(".pptx")) return { kind: "pptx", mime };
-  return { kind: "other", mime };
-}
-
 export async function uploadFile(file: File): Promise<ArchivedFile> {
-  await sleep();
-  const { kind, mime } = detectKind(file);
-  const originalBytes = file.size;
-  const storedBytes = Math.round(originalBytes * (0.15 + Math.random() * 0.15));
-  const url = URL.createObjectURL(file);
-  const now = new Date().toISOString();
-  const uploader = currentUser?.id ?? "admin_reyes";
-  const archived: ArchivedFile = {
-    id: `upload_${Date.now()}`,
-    name: file.name,
-    kind,
-    mimeType: mime,
-    ownerId: uploader,
-    originalBytes,
-    storedBytes,
-    compressionRatio: (originalBytes - storedBytes) / originalBytes,
-    tags: ["Uploaded"],
-    createdAt: now,
-    updatedAt: now,
-    previewUrl: url,
-    downloadUrl: url,
+  const compression = await compressFile(file);
+  const archived = await driveUpload(compression.compressedFile);
+
+  const compressionRatio =
+    compression.originalSize > 0
+      ? (compression.originalSize - compression.compressedSize) / compression.originalSize
+      : 0;
+
+  const archivedWithCompression: ArchivedFile = {
+    ...archived,
+    originalBytes: compression.originalSize,
+    storedBytes: compression.compressedSize,
+    compressionRatio,
   };
-  files = [archived, ...files];
-  return archived;
+
+  files = [archivedWithCompression, ...files.filter((f) => f.id !== archived.id)];
+  return archivedWithCompression;
 }
 
 export async function deleteFile(id: string): Promise<void> {
-  await sleep();
-  const before = files.length;
+  await driveDelete(id);
   files = files.filter((f) => f.id !== id);
-  if (files.length === before) throw apiError("not_found", `File ${id} not found`);
 }
 
 // --- Sharing ---
