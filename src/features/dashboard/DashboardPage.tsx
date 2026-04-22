@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   ArrowUpDown,
   Check,
@@ -104,6 +105,7 @@ const ROLE_EMPTY = {
 } as const;
 
 export default function DashboardPage() {
+  const location = useLocation();
   const user = useSessionStore((s) => s.user);
   const openUpload = useUIStore((s) => s.openUpload);
   const openNewFolder = useUIStore((s) => s.openNewFolder);
@@ -120,7 +122,7 @@ export default function DashboardPage() {
   const [view, setView] = useState<ViewMode>("grid");
   const [folders, setFolders] = useState<Folder[] | null>(null);
   const [allFiles, setAllFiles] = useState<ArchivedFile[] | null>(null);
-  const [activeFolder, setActiveFolder] = useState<Folder | null>(null);
+  const [folderTrail, setFolderTrail] = useState<Folder[]>([]);
   const [displayLimit, setDisplayLimit] = useState(16);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
@@ -131,6 +133,14 @@ export default function DashboardPage() {
   const [foldersExpanded, setFoldersExpanded] = useState(false);
 
   const totalSelected = selectedFileIds.size + selectedFolderIds.size;
+  const activeFolder = folderTrail.length > 0 ? folderTrail[folderTrail.length - 1] : null;
+
+  useEffect(() => {
+    const state = location.state as { folderTrail?: Folder[] } | null;
+    if (state?.folderTrail && Array.isArray(state.folderTrail)) {
+      setFolderTrail(state.folderTrail);
+    }
+  }, [location.key, location.state]);
 
   const ownerId = user?.role === "student" ? user.id : undefined;
 
@@ -248,10 +258,20 @@ export default function DashboardPage() {
 
   function handleOpenFolder(folder: Folder) {
     clearSelection();
-    setActiveFolder(folder);
+    setFolderTrail((prev) => [...prev, folder]);
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
+  }
+
+  function handleNavigateToTrailIndex(index: number) {
+    clearSelection();
+    setFolderTrail((prev) => prev.slice(0, index + 1));
+  }
+
+  function handleNavigateToRoot() {
+    clearSelection();
+    setFolderTrail([]);
   }
 
   async function handleDeleteActiveFolder() {
@@ -259,7 +279,7 @@ export default function DashboardPage() {
     try {
       await deleteFolder(activeFolder.id);
       toast.success("Folder deleted");
-      setActiveFolder(null);
+      setFolderTrail((prev) => prev.slice(0, -1));
       bumpFoldersVersion();
     } catch {
       toast.error("Couldn't delete folder");
@@ -394,18 +414,35 @@ export default function DashboardPage() {
             <>
               <button
                 type="button"
-                onClick={() => setActiveFolder(null)}
+                onClick={handleNavigateToRoot}
                 className="text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
               >
                 All files
               </button>
-              <ChevronRight
-                className="size-[14px] shrink-0 text-muted-foreground/60"
-                strokeWidth={1.8}
-              />
-              <span className="truncate font-semibold text-foreground">
-                {activeFolder.name}
-              </span>
+              {folderTrail.map((folder, index) => {
+                const isLast = index === folderTrail.length - 1;
+                return (
+                  <div key={folder.id} className="flex min-w-0 items-center gap-1.5">
+                    <ChevronRight
+                      className="size-[14px] shrink-0 text-muted-foreground/60"
+                      strokeWidth={1.8}
+                    />
+                    {isLast ? (
+                      <span className="truncate font-semibold text-foreground">
+                        {folder.name}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleNavigateToTrailIndex(index)}
+                        className="truncate text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                      >
+                        {folder.name}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </>
           ) : (
             <span className="font-semibold text-foreground">All files</span>
@@ -716,6 +753,7 @@ export default function DashboardPage() {
               <FileCard 
                 key={file.id} 
                 file={file} 
+                folderTrail={folderTrail}
                 selected={selectedFileIds.has(file.id)}
                 onSelectChange={(c) => toggleSelection(file.id, c)}
               />
@@ -734,6 +772,7 @@ export default function DashboardPage() {
               <FileRow 
                 key={file.id} 
                 file={file} 
+                folderTrail={folderTrail}
                 selected={selectedFileIds.has(file.id)}
                 onSelectChange={(c) => toggleSelection(file.id, c)}
               />

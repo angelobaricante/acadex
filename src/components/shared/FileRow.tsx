@@ -18,6 +18,7 @@ import FileActionsMenu from "./FileActionsMenu";
 
 interface FileRowProps {
   file: ArchivedFile;
+  folderTrail?: Folder[];
   selected?: boolean;
   onSelectChange?: (checked: boolean) => void;
 }
@@ -39,7 +40,7 @@ function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: 
   }
 }
 
-export default function FileRow({ file, selected, onSelectChange }: FileRowProps) {
+export default function FileRow({ file, folderTrail, selected, onSelectChange }: FileRowProps) {
   const navigate = useNavigate();
   const { setSearch } = useShellSearch();
   const config = fileTypeConfig(file.kind);
@@ -56,7 +57,7 @@ export default function FileRow({ file, selected, onSelectChange }: FileRowProps
     if (!selected) {
       onSelectChange?.(true);
     } else {
-      navigate(`/file/${file.id}`);
+      navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
     }
   };
 
@@ -148,7 +149,7 @@ export default function FileRow({ file, selected, onSelectChange }: FileRowProps
       </span>
       </div>
       <div className="absolute right-2 top-1/2 -translate-y-1/2">
-        <FileActionsMenu file={file} variant="row" />
+        <FileActionsMenu file={file} variant="row" folderTrail={folderTrail} />
       </div>
     </div>
   );

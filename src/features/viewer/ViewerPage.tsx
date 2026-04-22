@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Download, FileText, Share2, Trash2, FileIcon, FileImage, FileVideo, Presentation, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { deleteFile, getFile } from "@/lib/api";
@@ -31,12 +31,14 @@ function fileTypeConfig(kind: FileKind): { Icon: LucideIcon; color: string; bg: 
 export default function ViewerPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const user = useSessionStore((s) => s.user);
   const openShare = useUIStore((s) => s.openShare);
 
   const [status, setStatus] = useState<Status>("loading");
   const [file, setFile] = useState<ArchivedFile | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const backFolderTrail = ((location.state as { folderTrail?: Array<{ id: string; name: string; ownerId: string }> } | null)?.folderTrail) ?? [];
 
   useEffect(() => {
     if (!id) {
@@ -117,7 +119,7 @@ export default function ViewerPage() {
       await deleteFile(file.id);
       toast.success(`Deleted ${file.name}`);
       useUIStore.getState().bumpUploadsVersion();
-      navigate("/");
+      navigate("/", { state: { folderTrail: backFolderTrail } });
     } catch {
       toast.error("Failed to delete file");
     }
@@ -144,7 +146,7 @@ export default function ViewerPage() {
       <aside className="flex flex-col gap-5">
         <div>
           <Button asChild variant="ghost" size="sm" className="-ml-2 text-muted-foreground">
-            <Link to="/">
+            <Link to="/" state={{ folderTrail: backFolderTrail }}>
               <ArrowLeft className="size-3.5" />
               Back
             </Link>

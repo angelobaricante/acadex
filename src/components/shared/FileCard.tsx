@@ -18,6 +18,7 @@ import FileActionsMenu from "./FileActionsMenu";
 
 interface FileCardProps {
   file: ArchivedFile;
+  folderTrail?: Folder[];
   selected?: boolean;
   onSelectChange?: (checked: boolean) => void;
 }
@@ -39,7 +40,7 @@ function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: 
   }
 }
 
-export default function FileCard({ file, selected, onSelectChange }: FileCardProps) {
+export default function FileCard({ file, folderTrail, selected, onSelectChange }: FileCardProps) {
   const navigate = useNavigate();
   const { setSearch } = useShellSearch();
   const config = fileTypeConfig(file.kind);
@@ -56,7 +57,7 @@ export default function FileCard({ file, selected, onSelectChange }: FileCardPro
     if (!selected) {
       onSelectChange?.(true);
     } else {
-      navigate(`/file/${file.id}`);
+      navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
     }
   };
 
@@ -159,7 +160,7 @@ export default function FileCard({ file, selected, onSelectChange }: FileCardPro
         </div>
       </div>
       </div>
-      <FileActionsMenu file={file} variant="card" />
+      <FileActionsMenu file={file} variant="card" folderTrail={folderTrail} />
 
       <div 
         className={cn(
