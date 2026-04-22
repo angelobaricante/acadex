@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, FolderUp, Folder as FolderIcon, Loader2 } from "lucide-react";
+import { Check, ChevronDown, FolderUp, Folder as FolderIcon } from "lucide-react";
+import BrandSpinner from "@/components/shared/BrandSpinner";
 import {
   Dialog,
   DialogContent,
@@ -58,9 +59,44 @@ export default function FolderUploadDialog() {
 
   const targetFolder = folders.find((f) => f.id === targetFolderId) ?? null;
 
-  async function handleFiles(fileList: FileList | null) {
-    if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList);
+  async function pickFolderViaFSAccess() {
+    const w = window as unknown as {
+      showDirectoryPicker?: (opts?: { mode?: "read" | "readwrite" }) => Promise<FileSystemDirectoryHandle>;
+    };
+    if (!w.showDirectoryPicker) return false;
+    try {
+      const handle = await w.showDirectoryPicker({ mode: "read" });
+      const collected: File[] = [];
+      async function walk(dirHandle: FileSystemDirectoryHandle) {
+        for await (const entry of (dirHandle as unknown as AsyncIterable<FileSystemHandle>)) {
+          if (entry.kind === "file") {
+            const fileHandle = entry as FileSystemFileHandle;
+            collected.push(await fileHandle.getFile());
+          } else if (entry.kind === "directory") {
+            await walk(entry as FileSystemDirectoryHandle);
+          }
+        }
+      }
+      await walk(handle);
+      await handleFiles(collected);
+      return true;
+    } catch (err) {
+      // User aborted the picker — treat as no-op, silently.
+      if (err instanceof DOMException && err.name === "AbortError") return true;
+      return false;
+    }
+  }
+
+  function openFolderPicker() {
+    if (uploading) return;
+    void pickFolderViaFSAccess().then((handled) => {
+      if (!handled) inputRef.current?.click();
+    });
+  }
+
+  async function handleFiles(fileList: FileList | File[] | null) {
+    if (!fileList || (Array.isArray(fileList) ? fileList.length === 0 : fileList.length === 0)) return;
+    const files = Array.isArray(fileList) ? fileList : Array.from(fileList);
     setUploading(true);
     setProgress({ done: 0, total: files.length });
 
@@ -233,13 +269,11 @@ export default function FolderUploadDialog() {
           role="button"
           tabIndex={0}
           aria-disabled={uploading}
-          onClick={() => {
-            if (!uploading) inputRef.current?.click();
-          }}
+          onClick={openFolderPicker}
           onKeyDown={(e) => {
             if ((e.key === "Enter" || e.key === " ") && !uploading) {
               e.preventDefault();
-              inputRef.current?.click();
+              openFolderPicker();
             }
           }}
           onDragOver={(e) => {
@@ -266,7 +300,7 @@ export default function FolderUploadDialog() {
             )}
           >
             {uploading ? (
-              <Loader2 className="size-5 animate-spin" strokeWidth={1.8} />
+              <BrandSpinner size={26} />
             ) : (
               <FolderUp className="size-5" strokeWidth={1.6} />
             )}

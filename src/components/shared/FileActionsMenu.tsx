@@ -16,6 +16,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuPortal,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -176,7 +177,13 @@ export default function FileActionsMenu({ file, variant = "card", folderTrail, o
             <FolderIcon className="size-[14px] text-muted-foreground" strokeWidth={1.8} />
             <span>Move to folder</span>
           </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-56 p-1">
+          <DropdownMenuPortal>
+          <DropdownMenuSubContent
+            className="w-56 p-1"
+            sideOffset={4}
+            alignOffset={-4}
+            collisionPadding={12}
+            avoidCollisions>
             {file.folderId ? (
               <>
                 <DropdownMenuItem
@@ -217,6 +224,7 @@ export default function FileActionsMenu({ file, variant = "card", folderTrail, o
               })
             )}
           </DropdownMenuSubContent>
+          </DropdownMenuPortal>
         </DropdownMenuSub>
 
         <DropdownMenuSeparator />

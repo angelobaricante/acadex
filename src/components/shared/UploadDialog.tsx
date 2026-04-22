@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, FileUp, Folder as FolderIcon, Loader2 } from "lucide-react";
+import { Check, ChevronDown, FileUp, Folder as FolderIcon } from "lucide-react";
+import BrandSpinner from "@/components/shared/BrandSpinner";
 import {
   Dialog,
   DialogContent,
@@ -251,7 +252,7 @@ export default function UploadDialog() {
             )}
           >
             {uploading ? (
-              <Loader2 className="size-5 animate-spin" strokeWidth={1.8} />
+              <BrandSpinner size={26} />
             ) : (
               <FileUp className="size-5" strokeWidth={1.6} />
             )}
