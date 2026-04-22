@@ -104,6 +104,17 @@ export default function LoginPage() {
       const user = await mockSignIn(role);
       setUser(user);
       navigate("/", { replace: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Sign-in failed";
+      if (message === "popup_closed") return;
+
+      if (message.includes("Missing VITE_GOOGLE_CLIENT_ID")) {
+        alert("Google sign-in is not configured. Set VITE_GOOGLE_CLIENT_ID in your env.");
+        return;
+      }
+
+      alert(`Sign-in failed: ${message}`);
+    } finally {
     } catch {
       setLoading(false);
     }
