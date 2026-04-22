@@ -1,72 +1,129 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   FileIcon,
   FileImage,
   FileText,
   FileVideo,
+  Presentation,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatBytes, formatDate } from "@/lib/format";
 import type { ArchivedFile, FileKind } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useShellSearch } from "@/components/layout/AppShell";
 import SavingsBadge from "./SavingsBadge";
 import FileActionsMenu from "./FileActionsMenu";
 
 interface FileRowProps {
   file: ArchivedFile;
+  selected?: boolean;
+  onSelectChange?: (checked: boolean) => void;
 }
 
-function iconFor(kind: FileKind): LucideIcon {
+function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: string } {
   switch (kind) {
     case "pdf":
+      return { Icon: FileText, color: "text-red-500", bg: "bg-red-50/80" };
     case "docx":
+      return { Icon: FileText, color: "text-blue-500", bg: "bg-blue-50/80" };
     case "pptx":
-      return FileText;
+      return { Icon: Presentation, color: "text-orange-500", bg: "bg-orange-50/80" };
     case "image":
-      return FileImage;
+      return { Icon: FileImage, color: "text-emerald-500", bg: "bg-emerald-50/80" };
     case "video":
-      return FileVideo;
+      return { Icon: FileVideo, color: "text-purple-500", bg: "bg-purple-50/80" };
     default:
-      return FileIcon;
+      return { Icon: FileIcon, color: "text-slate-500", bg: "bg-slate-50/80" };
   }
 }
 
-export default function FileRow({ file }: FileRowProps) {
-  const Icon = iconFor(file.kind);
+export default function FileRow({ file, selected, onSelectChange }: FileRowProps) {
+  const navigate = useNavigate();
+  const { setSearch } = useShellSearch();
+  const config = fileTypeConfig(file.kind);
+  const Icon = config.Icon;
   const visibleTags = file.tags.slice(0, 2);
   const overflow = file.tags.length - visibleTags.length;
 
+  const fileNameWithoutExt = file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, "") : file.name;
+  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toUpperCase() : "";
+
+  const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selected) {
+      onSelectChange?.(true);
+    } else {
+      navigate(`/file/${file.id}`);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      handleClick(e);
+    }
+  };
+
+  const handleTagClick = (e: React.MouseEvent, tag: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSearch(tag);
+  };
+
   return (
-    <div className="group/file-row relative">
-      <Link
-      to={`/file/${file.id}`}
-      data-slot="file-row"
-      className={cn(
-        "grid items-center gap-4 rounded-lg border border-transparent py-2.5 pl-3 pr-12",
-        "grid-cols-[24px_minmax(0,1fr)_auto_96px_96px]",
-        "transition-colors duration-150",
-        "hover:border-border/80 hover:bg-white",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-      )}
-    >
+    <div className="group/file-row relative flex items-center">
+      <div 
+        className={cn(
+          "absolute left-3.5 z-10 transition-opacity duration-150",
+          selected ? "opacity-100" : "opacity-0 group-hover/file-row:opacity-100"
+        )}
+      >
+        <Checkbox 
+          checked={selected}
+          onCheckedChange={(checked) => onSelectChange?.(checked === true)}
+          className="border-primary/30 bg-white/60 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-white"
+        />
+      </div>
+
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleClick}
+        onKeyDown={handleKeyDown}
+        data-slot="file-row"
+        className={cn(
+          "grid flex-1 items-center gap-4 rounded-lg border py-2.5 pr-12 pl-[42px]",
+          "grid-cols-[24px_minmax(0,1fr)_auto_96px_96px]",
+          "transition-colors duration-150",
+          selected ? "border-primary/40 bg-primary/[0.02]" : "border-transparent hover:border-border/80 hover:bg-white",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        )}
+      >
       <Icon
         aria-hidden="true"
-        strokeWidth={1.6}
-        className="size-6 text-muted-foreground/80 transition-colors duration-150 group-hover/file-row:text-primary"
+        strokeWidth={1.8}
+        className={cn("size-5", config.color)}
       />
 
       <div className="flex min-w-0 items-center gap-2">
         <span className="truncate text-[13.5px] font-medium text-foreground">
-          {file.name}
+          {fileNameWithoutExt}
         </span>
+        {extension && (
+          <Badge variant="outline" className={cn("h-4 shrink-0 rounded-full px-1.5 text-[9px] font-bold uppercase tracking-wider border-transparent mix-blend-multiply", config.bg, config.color)}>
+            {extension}
+          </Badge>
+        )}
         {visibleTags.length > 0 && (
           <span className="hidden min-w-0 items-center gap-1 sm:inline-flex">
             {visibleTags.map((tag) => (
               <Badge
                 key={tag}
                 variant="secondary"
-                className="h-5 shrink-0 px-1.5 text-[11px] font-normal text-muted-foreground"
+                onClick={(e) => handleTagClick(e, tag)}
+                className="h-5 shrink-0 cursor-pointer rounded-full px-1.5 text-[11px] font-normal text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
               >
                 {tag}
               </Badge>
@@ -89,7 +146,7 @@ export default function FileRow({ file }: FileRowProps) {
       <span className="text-right text-[12.5px] text-muted-foreground tabular-nums">
         {formatDate(file.createdAt)}
       </span>
-      </Link>
+      </div>
       <div className="absolute right-2 top-1/2 -translate-y-1/2">
         <FileActionsMenu file={file} variant="row" />
       </div>

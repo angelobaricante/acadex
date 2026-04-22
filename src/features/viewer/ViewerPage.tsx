@@ -1,20 +1,32 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Download, FileText, Share2, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, FileText, Share2, Trash2, FileIcon, FileImage, FileVideo, Presentation, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { deleteFile, getFile } from "@/lib/api";
-import type { ArchivedFile } from "@/lib/types";
+import type { ArchivedFile, FileKind } from "@/lib/types";
 import { useSessionStore, useUIStore } from "@/lib/store";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import SavingsBadge from "@/components/shared/SavingsBadge";
+import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import { formatBytes, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import FilePreview from "./FilePreview";
 
 type Status = "loading" | "ok" | "not_found";
+
+function fileTypeConfig(kind: FileKind): { Icon: LucideIcon; color: string; bg: string } {
+  switch (kind) {
+    case "pdf": return { Icon: FileText, color: "text-red-500", bg: "bg-red-50/80" };
+    case "docx": return { Icon: FileText, color: "text-blue-500", bg: "bg-blue-50/80" };
+    case "pptx": return { Icon: Presentation, color: "text-orange-500", bg: "bg-orange-50/80" };
+    case "image": return { Icon: FileImage, color: "text-emerald-500", bg: "bg-emerald-50/80" };
+    case "video": return { Icon: FileVideo, color: "text-purple-500", bg: "bg-purple-50/80" };
+    default: return { Icon: FileIcon, color: "text-slate-500", bg: "bg-slate-50/80" };
+  }
+}
 
 export default function ViewerPage() {
   const { id } = useParams<{ id: string }>();
@@ -24,6 +36,7 @@ export default function ViewerPage() {
 
   const [status, setStatus] = useState<Status>("loading");
   const [file, setFile] = useState<ArchivedFile | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -100,7 +113,6 @@ export default function ViewerPage() {
 
   async function handleDelete() {
     if (!file) return;
-    if (!window.confirm(`Delete "${file.name}"? This cannot be undone.`)) return;
     try {
       await deleteFile(file.id);
       toast.success(`Deleted ${file.name}`);
@@ -111,7 +123,11 @@ export default function ViewerPage() {
     }
   }
 
-  return (
+  const fileNameWithoutExt = file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, "") : file.name;
+  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toUpperCase() : "";
+  const config = fileTypeConfig(file.kind);
+
+  return (<>
     <div className="grid h-full gap-6 p-6 lg:grid-cols-[minmax(0,1fr)_360px]">
       {/* Preview surface */}
       <div
@@ -136,27 +152,34 @@ export default function ViewerPage() {
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <h1 className="text-[18px] font-semibold leading-snug tracking-tight text-foreground">
-            {file.name}
-          </h1>
+          <div className="flex items-start gap-2">
+            <h1 className="text-[18px] font-semibold leading-snug tracking-tight text-foreground break-all">
+              {fileNameWithoutExt}
+            </h1>
+            {extension && (
+              <Badge variant="outline" className={cn("mt-0.5 shrink-0 rounded-full px-1.5 text-[10px] font-bold uppercase tracking-wider border-transparent mix-blend-multiply", config.bg, config.color)}>
+                {extension}
+              </Badge>
+            )}
+          </div>
           <p className="text-[12.5px] text-muted-foreground tabular-nums">
             Added {formatDate(file.createdAt)}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" onClick={() => openShare(file.id)}>
+          <Button size="sm" onClick={() => openShare(file.id)} className="rounded-lg">
             <Share2 className="size-3.5" />
             Share
           </Button>
-          <Button asChild size="sm" variant="outline">
+          <Button asChild size="sm" variant="outline" className="rounded-lg">
             <a href={file.downloadUrl} download={file.name}>
               <Download className="size-3.5" />
               Download
             </a>
           </Button>
           {canDelete && (
-            <Button size="sm" variant="outline" onClick={handleDelete}>
+            <Button size="sm" variant="outline" onClick={() => setConfirmOpen(true)} className="rounded-lg">
               <Trash2 className="size-3.5" />
               Delete
             </Button>
@@ -198,7 +221,7 @@ export default function ViewerPage() {
                 <Badge
                   key={tag}
                   variant="secondary"
-                  className="h-5 px-1.5 text-[11px] font-normal tracking-tight text-muted-foreground"
+                  className="h-5 rounded-full px-1.5 text-[11px] font-normal tracking-tight text-muted-foreground"
                 >
                   {tag}
                 </Badge>
@@ -210,5 +233,14 @@ export default function ViewerPage() {
         </div>
       </aside>
     </div>
-  );
+
+    <ConfirmDialog
+      open={confirmOpen}
+      onOpenChange={setConfirmOpen}
+      title="Delete file?"
+      description={`"${file.name}" will be permanently deleted and cannot be recovered.`}
+      confirmLabel="Delete file"
+      onConfirm={() => void handleDelete()}
+    />
+  </>);
 }

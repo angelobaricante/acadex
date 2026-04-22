@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Folder as FolderIcon, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,14 @@ const COLOR_OPTIONS: Array<{ value: FolderColor; label: string; dot: string }> =
   { value: "violet", label: "Violet", dot: "bg-violet-500" },
   { value: "neutral", label: "Neutral", dot: "bg-muted-foreground" },
 ];
+
+const FOLDER_TINT: Record<FolderColor, { text: string; bg: string; ring: string; accent: string }> = {
+  green:   { text: "text-emerald-700",  bg: "bg-emerald-50",  ring: "ring-emerald-200/70",  accent: "bg-emerald-500" },
+  amber:   { text: "text-amber-700",    bg: "bg-amber-50",    ring: "ring-amber-200/70",    accent: "bg-amber-500" },
+  blue:    { text: "text-sky-700",      bg: "bg-sky-50",      ring: "ring-sky-200/70",      accent: "bg-sky-500" },
+  violet:  { text: "text-violet-700",   bg: "bg-violet-50",   ring: "ring-violet-200/70",   accent: "bg-violet-500" },
+  neutral: { text: "text-slate-600",    bg: "bg-slate-100",   ring: "ring-slate-200/70",    accent: "bg-slate-400" },
+};
 
 export default function NewFolderDialog() {
   const open = useUIStore((s) => s.newFolderDialogOpen);
@@ -49,7 +57,51 @@ export default function NewFolderDialog() {
     setSubmitting(true);
     try {
       await createFolder(trimmed, color);
-      toast.success("Folder created", { description: trimmed });
+      const tint = FOLDER_TINT[color];
+      toast.custom((id) => (
+        <div
+          className={cn(
+            "flex w-[340px] items-center gap-3 rounded-xl border border-border/60 bg-white px-3.5 py-3",
+            "shadow-[0_4px_24px_-4px_rgba(16,24,40,0.14),0_1px_0_rgba(16,24,40,0.02)]",
+            "animate-in slide-in-from-bottom-3 fade-in duration-300"
+          )}
+        >
+          {/* Folder icon badge */}
+          <span
+            className={cn(
+              "flex size-10 shrink-0 items-center justify-center rounded-xl ring-1 transition-colors",
+              tint.bg,
+              tint.ring,
+              tint.text
+            )}
+          >
+            <FolderIcon className="size-[18px]" strokeWidth={1.8} />
+          </span>
+
+          {/* Text */}
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <p className="truncate text-[13.5px] font-semibold leading-tight text-foreground">
+              {trimmed}
+            </p>
+            <p className="text-[11.5px] leading-tight text-muted-foreground">
+              Folder created · ready to use
+            </p>
+          </div>
+
+          {/* Color pip + dismiss */}
+          <div className="flex shrink-0 items-center gap-2">
+            <span className={cn("size-2 rounded-full", tint.accent)} />
+            <button
+              type="button"
+              onClick={() => toast.dismiss(id)}
+              aria-label="Dismiss"
+              className="flex size-6 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      ), { duration: 4000 });
       bumpFoldersVersion();
       closeNewFolder();
     } catch {

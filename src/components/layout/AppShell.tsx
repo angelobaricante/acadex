@@ -26,11 +26,13 @@ export default function AppShell() {
 
   return (
     <ShellSearchContext.Provider value={value}>
-      <div className="flex h-full min-h-0 w-full bg-[hsl(48_25%_98%)]">
+      <div
+        className="flex h-full min-h-0 w-full bg-[hsl(48_25%_98%)]"
+      >
         <Sidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar />
-          <main className="min-h-0 flex-1 overflow-y-auto">
+          <main className="min-h-0 flex-1 overflow-y-scroll">
             <Outlet />
           </main>
         </div>
