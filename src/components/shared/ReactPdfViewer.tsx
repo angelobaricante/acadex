@@ -13,9 +13,10 @@ pdfjs.GlobalWorkerOptions.workerSrc = new URL(
 interface ReactPdfViewerProps {
   fileUrl: string;
   fileName: string;
+  onBackgroundClick?: () => void;
 }
 
-export default function ReactPdfViewer({ fileUrl, fileName }: ReactPdfViewerProps) {
+export default function ReactPdfViewer({ fileUrl, fileName, onBackgroundClick }: ReactPdfViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Array<HTMLDivElement | null>>([]);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -142,7 +143,15 @@ export default function ReactPdfViewer({ fileUrl, fileName }: ReactPdfViewerProp
         </div>
       </div>
 
-      <div ref={containerRef} className="pdf-preview-scroll min-h-0 flex-1 overflow-auto px-3 pb-24 pt-16 sm:px-6 sm:pt-20">
+      <div
+        ref={containerRef}
+        className="pdf-preview-scroll min-h-0 flex-1 overflow-auto px-3 pb-24 pt-16 sm:px-6 sm:pt-20"
+        onClick={(event) => {
+          if (onBackgroundClick && event.target === event.currentTarget) {
+            onBackgroundClick();
+          }
+        }}
+      >
         {loadError ? (
           <div className="mx-auto flex h-full min-h-[260px] max-w-xl items-center justify-center rounded-xl border bg-black/20 px-6 py-10 text-center">
             <p className="text-[13px] text-muted-foreground">
@@ -159,9 +168,8 @@ export default function ReactPdfViewer({ fileUrl, fileName }: ReactPdfViewerProp
               }}
               onLoadError={() => setLoadError("load_failed")}
               loading={
-                <div className="flex h-[400px] w-[min(92vw,720px)] items-center justify-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" />
-                  Loading preview...
+                <div className="flex h-[400px] w-[min(92vw,720px)] items-center justify-center text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin opacity-70" />
                 </div>
               }
               error={null}
@@ -183,9 +191,10 @@ export default function ReactPdfViewer({ fileUrl, fileName }: ReactPdfViewerProp
                       scale={zoom}
                       renderTextLayer={false}
                       loading={
-                        <div className="flex h-[400px] w-[min(92vw,720px)] items-center justify-center gap-2 text-sm text-muted-foreground">
-                          <Loader2 className="size-4 animate-spin" />
-                          Rendering page {page}...
+                        <div
+                          className="flex h-[400px] w-[min(92vw,720px)] items-center justify-center rounded bg-gradient-to-b from-muted/40 to-muted/20"
+                        >
+                          <Loader2 className="size-4 animate-spin text-muted-foreground/60" />
                         </div>
                       }
                     />

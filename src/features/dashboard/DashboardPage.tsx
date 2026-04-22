@@ -608,11 +608,7 @@ export default function DashboardPage() {
 
   function handleOpenFile(file: ArchivedFile) {
     clearSelection();
-    if (file.kind === "pdf") {
-      setSelectedPdfFile(file);
-      return;
-    }
-    navigate(`/file/${file.id}`, { state: { folderTrail: normalizedFolderTrail } });
+    setSelectedPdfFile(file);
   }
 
   function handlePdfPreviewShare(file: ArchivedFile) {
