@@ -290,9 +290,15 @@ export async function revokeShareLink(shareId: string): Promise<void> {
 }
 
 // --- Folders ---
-export async function listFolders(): Promise<Folder[]> {
+export async function listFolders(parentFolderId?: string | null): Promise<Folder[]> {
   await sleep();
-  return [...folders].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  let result = [...folders];
+  if (typeof parentFolderId === "string") {
+    result = result.filter((f) => f.parentFolderId === parentFolderId);
+  } else if (parentFolderId === null) {
+    result = result.filter((f) => f.parentFolderId === null || f.parentFolderId === undefined);
+  }
+  return result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function getFolder(id: string): Promise<Folder> {
@@ -302,14 +308,22 @@ export async function getFolder(id: string): Promise<Folder> {
   return folder;
 }
 
-export async function createFolder(name: string, color?: FolderColor): Promise<Folder> {
+export async function createFolder(
+  name: string,
+  color?: FolderColor,
+  parentFolderId?: string | null
+): Promise<Folder> {
   await sleep();
+  if (parentFolderId !== null && parentFolderId !== undefined && !folders.find((f) => f.id === parentFolderId)) {
+    throw apiError("not_found", `Parent folder ${parentFolderId} not found`);
+  }
   const folder: Folder = {
     id: `folder_${Math.random().toString(36).slice(2, 10)}`,
     name,
     ownerId: currentUser?.id ?? "admin_reyes",
     color: color ?? "green",
     createdAt: new Date().toISOString(),
+    parentFolderId: parentFolderId ?? null,
   };
   folders = [folder, ...folders];
   return folder;

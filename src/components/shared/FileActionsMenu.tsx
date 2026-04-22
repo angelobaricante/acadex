@@ -31,14 +31,16 @@ import {
 import { useUIStore } from "@/lib/store";
 import type { ArchivedFile, Folder } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { showDeleteToast } from "./deleteToast";
 
 interface FileActionsMenuProps {
   file: ArchivedFile;
   /** Visual variant for the trigger button. */
   variant?: "card" | "row";
+  folderTrail?: Folder[];
 }
 
-export default function FileActionsMenu({ file, variant = "card" }: FileActionsMenuProps) {
+export default function FileActionsMenu({ file, variant = "card", folderTrail }: FileActionsMenuProps) {
   const navigate = useNavigate();
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
   const [folders, setFolders] = useState<Folder[] | null>(null);
@@ -59,7 +61,7 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
   }
 
   function handleOpen() {
-    navigate(`/file/${file.id}`);
+    navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
   }
 
   async function handleCopyLink() {
@@ -91,7 +93,7 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
   async function handleDelete() {
     try {
       await deleteFile(file.id);
-      toast.success("File deleted");
+      showDeleteToast({ kind: "file", name: file.name });
       bumpFoldersVersion();
     } catch {
       toast.error("Couldn't delete file");

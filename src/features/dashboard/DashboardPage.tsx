@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import {
   ArrowUpDown,
   Check,
@@ -37,6 +38,7 @@ import FileRow from "@/components/shared/FileRow";
 import FolderTile from "@/components/shared/FolderTile";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import { showDeleteToast } from "@/components/shared/deleteToast";
 import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
@@ -104,6 +106,7 @@ const ROLE_EMPTY = {
 } as const;
 
 export default function DashboardPage() {
+  const location = useLocation();
   const user = useSessionStore((s) => s.user);
   const openUpload = useUIStore((s) => s.openUpload);
   const openNewFolder = useUIStore((s) => s.openNewFolder);
@@ -119,8 +122,9 @@ export default function DashboardPage() {
   const [sort, setSort] = useState<SortKey>("recent");
   const [view, setView] = useState<ViewMode>("grid");
   const [folders, setFolders] = useState<Folder[] | null>(null);
+  const [allFolders, setAllFolders] = useState<Folder[] | null>(null);
   const [allFiles, setAllFiles] = useState<ArchivedFile[] | null>(null);
-  const [activeFolder, setActiveFolder] = useState<Folder | null>(null);
+  const [folderTrail, setFolderTrail] = useState<Folder[]>([]);
   const [displayLimit, setDisplayLimit] = useState(16);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
@@ -129,8 +133,17 @@ export default function DashboardPage() {
   const [confirmDeleteFolderOpen, setConfirmDeleteFolderOpen] = useState(false);
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
   const [foldersExpanded, setFoldersExpanded] = useState(false);
+  const [folderGridColumns, setFolderGridColumns] = useState(5);
 
   const totalSelected = selectedFileIds.size + selectedFolderIds.size;
+  const activeFolder = folderTrail.length > 0 ? folderTrail[folderTrail.length - 1] : null;
+
+  useEffect(() => {
+    const state = location.state as { folderTrail?: Folder[] } | null;
+    if (state?.folderTrail && Array.isArray(state.folderTrail)) {
+      setFolderTrail(state.folderTrail);
+    }
+  }, [location.key, location.state]);
 
   const ownerId = user?.role === "student" ? user.id : undefined;
 
@@ -146,23 +159,55 @@ export default function DashboardPage() {
     };
   }, [setCurrentFolderId]);
 
+  // Match folder grid breakpoints so "View more" always maps to 2 visible rows.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const updateFolderGridColumns = () => {
+      const width = window.innerWidth;
+      if (width >= 1280) {
+        setFolderGridColumns(5);
+      } else if (width >= 1024) {
+        setFolderGridColumns(4);
+      } else if (width >= 640) {
+        setFolderGridColumns(3);
+      } else {
+        setFolderGridColumns(2);
+      }
+    };
+
+    updateFolderGridColumns();
+    window.addEventListener("resize", updateFolderGridColumns);
+    return () => {
+      window.removeEventListener("resize", updateFolderGridColumns);
+    };
+  }, []);
+
   // Fetch folders list on mount / when they change.
+  // When inside a folder, fetch subfolders; when at root, fetch root-level folders.
   useEffect(() => {
     let cancelled = false;
-    listFolders().then((result) => {
+    const targetFolderId = activeFolder?.id ?? null;
+    listFolders(targetFolderId).then((result) => {
       if (cancelled) return;
       setFolders(result);
-      // If the active folder no longer exists, clear it.
-      if (activeFolder && !result.find((f) => f.id === activeFolder.id)) {
-        setActiveFolder(null);
-      }
     });
     return () => {
       cancelled = true;
     };
-    // activeFolder intentionally not a dep: we only want to reconcile when folders change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [foldersVersion, uploadsVersion]);
+  }, [foldersVersion, uploadsVersion, activeFolder]);
+
+  // Keep a flat snapshot of all folders so folder tiles can show deep counts.
+  useEffect(() => {
+    let cancelled = false;
+    listFolders().then((result) => {
+      if (cancelled) return;
+      setAllFolders(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [foldersVersion]);
 
   // Fetch the full file list (respecting ownerId) once per data-change event.
   // All filtering/sorting below is client-side so tab switches are instant —
@@ -229,14 +274,43 @@ export default function DashboardPage() {
 
   const fileCountsByFolder = useMemo(() => {
     const counts: Record<string, number> = {};
-    if (!allFiles) return counts;
-    for (const file of allFiles) {
-      if (file.folderId) {
-        counts[file.folderId] = (counts[file.folderId] ?? 0) + 1;
-      }
+    if (!allFiles || !allFolders) return counts;
+
+    const childFoldersByParent = new Map<string, string[]>();
+    for (const folder of allFolders) {
+      const parentFolderId = folder.parentFolderId ?? null;
+      if (parentFolderId === null) continue;
+      const siblings = childFoldersByParent.get(parentFolderId) ?? [];
+      siblings.push(folder.id);
+      childFoldersByParent.set(parentFolderId, siblings);
     }
+
+    const directFileCounts = new Map<string, number>();
+    for (const file of allFiles) {
+      if (!file.folderId) continue;
+      directFileCounts.set(file.folderId, (directFileCounts.get(file.folderId) ?? 0) + 1);
+    }
+
+    const folderCountCache = new Map<string, number>();
+    const countFolderFiles = (folderId: string): number => {
+      const cached = folderCountCache.get(folderId);
+      if (cached !== undefined) return cached;
+
+      let total = directFileCounts.get(folderId) ?? 0;
+      for (const childFolderId of childFoldersByParent.get(folderId) ?? []) {
+        total += countFolderFiles(childFolderId);
+      }
+
+      folderCountCache.set(folderId, total);
+      return total;
+    };
+
+    for (const folder of allFolders) {
+      counts[folder.id] = countFolderFiles(folder.id);
+    }
+
     return counts;
-  }, [allFiles]);
+  }, [allFiles, allFolders]);
 
   const sortLabel =
     SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Most recent";
@@ -244,7 +318,7 @@ export default function DashboardPage() {
     KIND_OPTIONS.find((o) => o.value === kind)?.label ?? "All types";
 
   const showFoldersStrip =
-    activeFolder === null && folders !== null && folders.length > 0;
+    folders !== null && folders.length > 0;
 
   const canDeleteActiveFolder =
     activeFolder !== null &&
@@ -253,18 +327,28 @@ export default function DashboardPage() {
 
   function handleOpenFolder(folder: Folder) {
     clearSelection();
-    setActiveFolder(folder);
+    setFolderTrail((prev) => [...prev, folder]);
     if (typeof window !== "undefined") {
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
+  }
+
+  function handleNavigateToTrailIndex(index: number) {
+    clearSelection();
+    setFolderTrail((prev) => prev.slice(0, index + 1));
+  }
+
+  function handleNavigateToRoot() {
+    clearSelection();
+    setFolderTrail([]);
   }
 
   async function handleDeleteActiveFolder() {
     if (!activeFolder) return;
     try {
       await deleteFolder(activeFolder.id);
-      toast.success("Folder deleted");
-      setActiveFolder(null);
+      showDeleteToast({ kind: "folder", name: activeFolder.name });
+      setFolderTrail((prev) => prev.slice(0, -1));
       bumpFoldersVersion();
     } catch {
       toast.error("Couldn't delete folder");
@@ -326,7 +410,7 @@ export default function DashboardPage() {
         ...Array.from(selectedFileIds).map((id) => deleteFile(id)),
         ...Array.from(selectedFolderIds).map((id) => deleteFolder(id)),
       ]);
-      toast.success(`${totalSelected} items deleted`);
+      showDeleteToast({ kind: "bulk", count: totalSelected });
       clearSelection();
       bumpUploadsVersion();
       bumpFoldersVersion();
@@ -399,18 +483,35 @@ export default function DashboardPage() {
             <>
               <button
                 type="button"
-                onClick={() => setActiveFolder(null)}
+                onClick={handleNavigateToRoot}
                 className="text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
               >
                 All files
               </button>
-              <ChevronRight
-                className="size-[14px] shrink-0 text-muted-foreground/60"
-                strokeWidth={1.8}
-              />
-              <span className="truncate font-semibold text-foreground">
-                {activeFolder.name}
-              </span>
+              {folderTrail.map((folder, index) => {
+                const isLast = index === folderTrail.length - 1;
+                return (
+                  <div key={folder.id} className="flex min-w-0 items-center gap-1.5">
+                    <ChevronRight
+                      className="size-[14px] shrink-0 text-muted-foreground/60"
+                      strokeWidth={1.8}
+                    />
+                    {isLast ? (
+                      <span className="truncate font-semibold text-foreground">
+                        {folder.name}
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleNavigateToTrailIndex(index)}
+                        className="truncate text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                      >
+                        {folder.name}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </>
           ) : (
             <span className="font-semibold text-foreground">All files</span>
@@ -478,7 +579,7 @@ export default function DashboardPage() {
             <DropdownMenuContent align="end" className="w-52 p-1">
               <DropdownMenuItem
                 onSelect={openNewFolder}
-                className="gap-2.5 px-2.5 py-2 text-[13px]"
+                className="cursor-pointer gap-2.5 px-2.5 py-2 text-[13px]"
               >
                 <FolderOpen className="size-[15px] text-muted-foreground" strokeWidth={1.8} />
                 <span>New Folder</span>
@@ -486,14 +587,14 @@ export default function DashboardPage() {
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onSelect={openUpload}
-                className="gap-2.5 px-2.5 py-2 text-[13px]"
+                className="cursor-pointer gap-2.5 px-2.5 py-2 text-[13px]"
               >
                 <Upload className="size-[15px] text-muted-foreground" strokeWidth={1.8} />
                 <span>File Upload</span>
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={openFolderUpload}
-                className="gap-2.5 px-2.5 py-2 text-[13px]"
+                className="cursor-pointer gap-2.5 px-2.5 py-2 text-[13px]"
               >
                 <FolderUp className="size-[15px] text-muted-foreground" strokeWidth={1.8} />
                 <span>Folder Upload</span>
@@ -505,9 +606,8 @@ export default function DashboardPage() {
 
       {/* Folders grid */}
       {showFoldersStrip && (() => {
-        const COLS = 5;
         const MAX_VISIBLE_ROWS = 2;
-        const MAX_VISIBLE = COLS * MAX_VISIBLE_ROWS; // 10
+        const MAX_VISIBLE = folderGridColumns * MAX_VISIBLE_ROWS;
         const hasMore = folders!.length > MAX_VISIBLE;
         const visibleFolders = hasMore && !foldersExpanded
           ? folders!.slice(0, MAX_VISIBLE)
@@ -519,7 +619,7 @@ export default function DashboardPage() {
               Folders
             </span>
 
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {visibleFolders.map((folder) => (
                 <FolderTile
                   key={folder.id}
@@ -721,6 +821,7 @@ export default function DashboardPage() {
               <FileCard 
                 key={file.id} 
                 file={file} 
+                folderTrail={folderTrail}
                 selected={selectedFileIds.has(file.id)}
                 onSelectChange={(c) => toggleSelection(file.id, c)}
               />
@@ -739,6 +840,7 @@ export default function DashboardPage() {
               <FileRow 
                 key={file.id} 
                 file={file} 
+                folderTrail={folderTrail}
                 selected={selectedFileIds.has(file.id)}
                 onSelectChange={(c) => toggleSelection(file.id, c)}
               />
