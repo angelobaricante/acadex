@@ -221,7 +221,7 @@ function FolderListRow({
   folder: Folder;
   selected: boolean;
   count: number;
-  onSelect: (checked: boolean) => void;
+  onSelect: (checked: boolean, shiftKey?: boolean) => void;
   onOpen: () => void;
 }) {
   const tint = FOLDER_TINT[folder.color];
@@ -247,21 +247,32 @@ function FolderListRow({
         onClick={(e) => {
           e.preventDefault();
           e.stopPropagation();
-          if (!selected) {
-            onSelect(true);
+          if (e.shiftKey) {
+            onSelect(!selected, true);
             return;
           }
+          if (!selected) onSelect(true, false);
+        }}
+        onDoubleClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
           onOpen();
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (e.key === "Enter") {
             e.preventDefault();
             e.stopPropagation();
-            if (!selected) {
-              onSelect(true);
+            onOpen();
+            return;
+          }
+          if (e.key === " ") {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.shiftKey) {
+              onSelect(!selected, true);
               return;
             }
-            onOpen();
+            if (!selected) onSelect(true, false);
           }
         }}
         className={cn(
@@ -366,6 +377,8 @@ export default function DashboardPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
   const [selectedFolderIds, setSelectedFolderIds] = useState<Set<string>>(new Set());
+  const [fileSelectionAnchorId, setFileSelectionAnchorId] = useState<string | null>(null);
+  const [folderSelectionAnchorId, setFolderSelectionAnchorId] = useState<string | null>(null);
   const observer = useRef<IntersectionObserver | null>(null);
   const [confirmDeleteFolderOpen, setConfirmDeleteFolderOpen] = useState(false);
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
@@ -583,6 +596,16 @@ export default function DashboardPage() {
     return { saved, original, percent };
   }, [files]);
 
+  function buildRangeSelection(ids: string[], anchorId: string, targetId: string) {
+    const anchorIndex = ids.indexOf(anchorId);
+    const targetIndex = ids.indexOf(targetId);
+    if (anchorIndex === -1 || targetIndex === -1) return null;
+
+    const start = Math.min(anchorIndex, targetIndex);
+    const end = Math.max(anchorIndex, targetIndex);
+    return new Set(ids.slice(start, end + 1));
+  }
+
   const folderMetricsByFolder = useMemo(() => {
     const metrics: Record<string, { count: number; originalBytes: number; savedBytes: number }> = {};
     if (!allFiles || !allFolders) return metrics;
@@ -767,27 +790,49 @@ export default function DashboardPage() {
     [isLoadingMore, displayLimit, files]
   );
 
-  function toggleSelection(id: string, checked: boolean) {
-    setSelectedFileIds((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
+  function toggleSelection(id: string, checked: boolean, shiftKey = false) {
+    setSelectedFolderIds(new Set());
+    setFolderSelectionAnchorId(null);
+
+    const fileIds = files?.map((file) => file.id) ?? [];
+    const nextRange = shiftKey && fileSelectionAnchorId
+      ? buildRangeSelection(fileIds, fileSelectionAnchorId, id)
+      : null;
+
+    setSelectedFileIds(() => {
+      if (nextRange) return nextRange;
+      return checked ? new Set([id]) : new Set();
     });
+
+    if (!shiftKey || !nextRange) {
+      setFileSelectionAnchorId(checked ? id : null);
+    }
   }
 
-  function toggleFolderSelection(id: string, checked: boolean) {
-    setSelectedFolderIds((prev) => {
-      const next = new Set(prev);
-      if (checked) next.add(id);
-      else next.delete(id);
-      return next;
+  function toggleFolderSelection(id: string, checked: boolean, shiftKey = false) {
+    setSelectedFileIds(new Set());
+    setFileSelectionAnchorId(null);
+
+    const folderIds = displayedFolders?.map((folder) => folder.id) ?? [];
+    const nextRange = shiftKey && folderSelectionAnchorId
+      ? buildRangeSelection(folderIds, folderSelectionAnchorId, id)
+      : null;
+
+    setSelectedFolderIds(() => {
+      if (nextRange) return nextRange;
+      return checked ? new Set([id]) : new Set();
     });
+
+    if (!shiftKey || !nextRange) {
+      setFolderSelectionAnchorId(checked ? id : null);
+    }
   }
 
   function clearSelection() {
     setSelectedFileIds(new Set());
     setSelectedFolderIds(new Set());
+    setFileSelectionAnchorId(null);
+    setFolderSelectionAnchorId(null);
   }
 
   async function handleBulkDelete() {
@@ -1033,7 +1078,7 @@ export default function DashboardPage() {
                     folder={folder}
                     fileCount={fileCountsByFolder[folder.id] ?? 0}
                     selected={selectedFolderIds.has(folder.id)}
-                    onSelectChange={(c) => toggleFolderSelection(folder.id, c)}
+                    onSelectChange={(c, shiftKey) => toggleFolderSelection(folder.id, c, shiftKey)}
                     onClick={() => handleOpenFolder(folder)}
                   />
                 ))}
@@ -1049,7 +1094,7 @@ export default function DashboardPage() {
                       folder={folder}
                       selected={selected}
                       count={count}
-                      onSelect={(checked) => toggleFolderSelection(folder.id, checked)}
+                      onSelect={(checked, shiftKey) => toggleFolderSelection(folder.id, checked, shiftKey)}
                       onOpen={() => handleOpenFolder(folder)}
                     />
                   );
@@ -1181,7 +1226,7 @@ export default function DashboardPage() {
                     file={file}
                     folderTrail={folderTrail}
                     selected={selectedFileIds.has(file.id)}
-                    onSelectChange={(c) => toggleSelection(file.id, c)}
+                    onSelectChange={(c, shiftKey) => toggleSelection(file.id, c, shiftKey)}
                   />
                 ))}
               </div>
@@ -1200,7 +1245,7 @@ export default function DashboardPage() {
                     file={file}
                     folderTrail={folderTrail}
                     selected={selectedFileIds.has(file.id)}
-                    onSelectChange={(c) => toggleSelection(file.id, c)}
+                    onSelectChange={(c, shiftKey) => toggleSelection(file.id, c, shiftKey)}
                   />
                 ))}
               </div>
