@@ -18,8 +18,8 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
 import { listFolders, moveFileToFolder, uploadFile } from "@/lib/api";
 import type { Folder } from "@/lib/types";
-import { formatBytes, formatPercent } from "@/lib/format";
 import { toast } from "sonner";
+import { showFileUploadToast, showFolderUploadToast } from "@/components/shared/uploadToast";
 
 export default function FolderUploadDialog() {
   const open = useUIStore((s) => s.folderUploadDialogOpen);
@@ -63,6 +63,11 @@ export default function FolderUploadDialog() {
     const files = Array.from(fileList);
     setUploading(true);
     setProgress({ done: 0, total: files.length });
+
+    let succeededCount = 0;
+    let totalOriginal = 0;
+    let totalStored = 0;
+
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
@@ -75,19 +80,38 @@ export default function FolderUploadDialog() {
               toast.error(`Couldn't move ${file.name} to '${targetFolder?.name ?? "folder"}'`);
             }
           }
-          const sizeSummary = `Compressed ${formatBytes(result.originalBytes)} → ${formatBytes(
-            result.storedBytes
-          )} (${formatPercent(result.compressionRatio)} smaller)`;
-          toast.success(`Uploaded ${file.name}`, {
-            description: targetFolder
-              ? `${sizeSummary} → saved to '${targetFolder.name}'.`
-              : `${sizeSummary}.`,
-          });
+
+          // Individual toast only when a single file is dropped.
+          if (files.length === 1) {
+            showFileUploadToast({
+              name: result.name ?? file.name,
+              originalBytes: result.originalBytes,
+              storedBytes: result.storedBytes,
+              compressionRatio: result.compressionRatio,
+              targetFolderName: targetFolder?.name,
+            });
+          }
+
+          succeededCount++;
+          totalOriginal += result.originalBytes;
+          totalStored += result.storedBytes;
         } catch {
           toast.error(`Failed to upload ${file.name}`);
         }
         setProgress({ done: i + 1, total: files.length });
       }
+
+      // Summary toast for the whole folder batch.
+      if (files.length > 1 && succeededCount > 0) {
+        showFolderUploadToast({
+          fileCount: succeededCount,
+          totalOriginalBytes: totalOriginal,
+          totalStoredBytes: totalStored,
+          totalCompressionRatio: totalOriginal > 0 ? (totalOriginal - totalStored) / totalOriginal : 0,
+          targetFolderName: targetFolder?.name,
+        });
+      }
+
       useUIStore.getState().bumpUploadsVersion();
       if (targetFolderId) {
         useUIStore.getState().bumpFoldersVersion();

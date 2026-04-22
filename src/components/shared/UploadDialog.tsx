@@ -20,6 +20,7 @@ import { listFolders, moveFileToFolder, uploadFile } from "@/lib/api";
 import type { Folder } from "@/lib/types";
 import { formatBytes, formatPercent } from "@/lib/format";
 import { toast } from "sonner";
+import { showFileUploadToast } from "@/components/shared/uploadToast";
 
 export default function UploadDialog() {
   const uploadDialogOpen = useUIStore((s) => s.uploadDialogOpen);
@@ -60,6 +61,11 @@ export default function UploadDialog() {
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
     setUploading(true);
+
+    let succeededCount = 0;
+    let totalOriginal = 0;
+    let totalStored = 0;
+
     try {
       for (const file of files) {
         try {
@@ -68,22 +74,41 @@ export default function UploadDialog() {
             try {
               await moveFileToFolder(result.id, targetFolderId);
             } catch {
-              // Surface as a soft warning; upload itself succeeded.
               toast.error(`Couldn't move ${file.name} to '${targetFolder?.name ?? "folder"}'`);
             }
           }
-          const sizeSummary = `Compressed ${formatBytes(result.originalBytes)} → ${formatBytes(
-            result.storedBytes
-          )} (${formatPercent(result.compressionRatio)} smaller)`;
-          toast.success(`Uploaded ${file.name}`, {
-            description: targetFolder
-              ? `${sizeSummary} → uploaded to '${targetFolder.name}'.`
-              : `${sizeSummary}.`,
-          });
+
+          // For single file OR each file in small batches, show individual toast.
+          if (files.length === 1) {
+            showFileUploadToast({
+              name: result.name ?? file.name,
+              originalBytes: result.originalBytes,
+              storedBytes: result.storedBytes,
+              compressionRatio: result.compressionRatio,
+              targetFolderName: targetFolder?.name,
+            });
+          }
+
+          succeededCount++;
+          totalOriginal += result.originalBytes;
+          totalStored += result.storedBytes;
         } catch {
           toast.error(`Failed to upload ${file.name}`);
         }
       }
+
+      // For multi-file batches, show a single summary toast.
+      if (files.length > 1 && succeededCount > 0) {
+        const { showFolderUploadToast } = await import("@/components/shared/uploadToast");
+        showFolderUploadToast({
+          fileCount: succeededCount,
+          totalOriginalBytes: totalOriginal,
+          totalStoredBytes: totalStored,
+          totalCompressionRatio: totalOriginal > 0 ? (totalOriginal - totalStored) / totalOriginal : 0,
+          targetFolderName: targetFolder?.name,
+        });
+      }
+
       useUIStore.getState().bumpUploadsVersion();
       if (targetFolderId) {
         useUIStore.getState().bumpFoldersVersion();
