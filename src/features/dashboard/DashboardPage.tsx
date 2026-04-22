@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import {
   ArrowDownAZ,
   ArrowDownZA,
@@ -140,7 +140,6 @@ const ROLE_EMPTY = {
 
 export default function DashboardPage() {
   const location = useLocation();
-  const navigate = useNavigate();
   const user = useSessionStore((s) => s.user);
   const openUpload = useUIStore((s) => s.openUpload);
   const openNewFolder = useUIStore((s) => s.openNewFolder);
@@ -602,8 +601,10 @@ export default function DashboardPage() {
 
     if (mode === "range" && fileSelectionAnchorId) {
       const range = buildRangeSelection(fileIds, fileSelectionAnchorId, id);
-      setSelectedFileIds(range);
-      return;
+      if (range) {
+        setSelectedFileIds(range);
+        return;
+      }
     }
 
     if (mode === "toggle") {
@@ -631,8 +632,10 @@ export default function DashboardPage() {
 
     if (mode === "range" && folderSelectionAnchorId) {
       const range = buildRangeSelection(folderIds, folderSelectionAnchorId, id);
-      setSelectedFolderIds(range);
-      return;
+      if (range) {
+        setSelectedFolderIds(range);
+        return;
+      }
     }
 
     if (mode === "toggle") {
