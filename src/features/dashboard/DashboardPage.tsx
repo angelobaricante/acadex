@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowUpDown,
-  Check,
   ChevronDown,
   ChevronRight,
   Clock,
@@ -14,12 +13,9 @@ import {
   FileImage,
   FileText,
   FileVideo,
-  Folder as FolderIcon,
   FolderOpen,
   FolderUp,
   HardDrive,
-  LayoutGrid,
-  List,
   Loader2,
   MoreHorizontal,
   Plus,
@@ -28,7 +24,6 @@ import {
   TrendingDown,
   Upload,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import { deleteFile, deleteFolder, listFiles, listFolders } from "@/lib/api";
 import type { ArchivedFile, FileKind, Folder } from "@/lib/types";
@@ -37,11 +32,16 @@ import { useShellSearch } from "@/components/layout/AppShell";
 import FileCard from "@/components/shared/FileCard";
 import FileRow from "@/components/shared/FileRow";
 import FolderTile from "@/components/shared/FolderTile";
-import FolderActionsMenu from "@/components/shared/FolderActionsMenu";
+import PdfPreviewModal from "@/components/shared/PdfPreviewModal";
+// FolderActionsMenu is only used in FolderListRow
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import SectionHeading from "@/components/shared/SectionHeading";
+import ViewToggle from "@/components/shared/ViewToggle";
+import SelectMenu from "@/components/shared/SelectMenu";
+import FolderListRow from "@/components/shared/FolderListRow";
 import { showDeleteToast } from "@/components/shared/deleteToast";
-import { formatBytes, formatDate } from "@/lib/format";
+import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -50,19 +50,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Checkbox } from "@/components/ui/checkbox";
+// Checkbox is only used in FolderListRow
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+// cn is only used in shared components
 import { toast } from "sonner";
 
+import type { SelectOption } from "@/components/shared/SelectMenu";
 type KindFilter = "all" | "folder" | FileKind;
 type SortKey = "recent" | "largest" | "most_saved";
-type ViewMode = "grid" | "list";
-type SelectOption<T extends string> = {
-  value: T;
-  label: string;
-  icon: LucideIcon;
-};
+export type ViewMode = "grid" | "list";
 
 const KIND_OPTIONS: SelectOption<KindFilter>[] = [
   { value: "all", label: "All types", icon: FileIcon },
@@ -81,244 +77,15 @@ const SORT_OPTIONS: SelectOption<SortKey>[] = [
   { value: "most_saved", label: "Most saved", icon: TrendingDown },
 ];
 
-const FOLDER_TINT = {
-  green: {
-    text: "text-emerald-700",
-    bg: "bg-emerald-50",
-    ring: "ring-emerald-200/70",
-  },
-  amber: {
-    text: "text-amber-700",
-    bg: "bg-amber-50",
-    ring: "ring-amber-200/70",
-  },
-  blue: {
-    text: "text-sky-700",
-    bg: "bg-sky-50",
-    ring: "ring-sky-200/70",
-  },
-  violet: {
-    text: "text-violet-700",
-    bg: "bg-violet-50",
-    ring: "ring-violet-200/70",
-  },
-  neutral: {
-    text: "text-muted-foreground",
-    bg: "bg-muted/60",
-    ring: "ring-border",
-  },
-} as const;
 
-function SectionHeading({ label }: { label: string }) {
-  return (
-    <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-      {label}
-    </span>
-  );
-}
 
-function ViewToggle({ view, onChange }: { view: ViewMode; onChange: (view: ViewMode) => void }) {
-  return (
-    <div
-      role="group"
-      aria-label="View mode"
-      className="ml-1 flex items-center gap-0.5 rounded-lg border border-border/70 bg-[hsl(48_25%_98%)] p-0.5"
-    >
-      <button
-        type="button"
-        aria-label="Grid view"
-        aria-pressed={view === "grid"}
-        onClick={() => onChange("grid")}
-        className={cn(
-          "flex size-7 items-center justify-center rounded-md transition-colors duration-150",
-          view === "grid"
-            ? "bg-white text-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground"
-        )}
-      >
-        <LayoutGrid className="size-[14px]" strokeWidth={1.8} />
-      </button>
-      <button
-        type="button"
-        aria-label="List view"
-        aria-pressed={view === "list"}
-        onClick={() => onChange("list")}
-        className={cn(
-          "flex size-7 items-center justify-center rounded-md transition-colors duration-150",
-          view === "list"
-            ? "bg-white text-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground"
-        )}
-      >
-        <List className="size-[14px]" strokeWidth={1.8} />
-      </button>
-    </div>
-  );
-}
 
-function SelectMenu<T extends string>({
-  selected,
-  defaultLabel,
-  options,
-  onSelect,
-  leadingIcon: LeadingIcon,
-}: {
-  selected: T;
-  defaultLabel: string;
-  options: SelectOption<T>[];
-  onSelect: (value: T) => void;
-  leadingIcon: LucideIcon;
-}) {
-  const selectedLabel = options.find((opt) => opt.value === selected)?.label ?? defaultLabel;
-  const isDefault = selected === options[0].value;
 
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className={cn(
-            "h-8 gap-1.5 rounded-lg text-[13px] font-medium transition-colors",
-            isDefault
-              ? "bg-muted/50 hover:bg-muted"
-              : "border-transparent bg-primary/10 text-primary hover:bg-primary/20"
-          )}
-        >
-          <LeadingIcon className="size-[14px]" strokeWidth={2} />
-          <span>{isDefault ? defaultLabel : selectedLabel}</span>
-          <ChevronDown className={cn("size-[14px]", isDefault ? "text-muted-foreground/70" : "text-primary/70")} />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56 p-1">
-        {options.map((opt) => (
-          <DropdownMenuItem
-            key={opt.value}
-            onSelect={() => onSelect(opt.value)}
-            className={cn(
-              "flex items-center gap-2.5 px-2 py-1.5 text-[13px] cursor-pointer",
-              selected === opt.value && "font-medium text-primary bg-primary/5"
-            )}
-          >
-            <opt.icon className={cn("size-[16px]", selected === opt.value ? "text-primary" : "text-muted-foreground")} />
-            <span className="flex-1">{opt.label}</span>
-            {selected === opt.value && <Check className="size-[14px] text-primary" />}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
-function FolderListRow({
-  folder,
-  selected,
-  count,
-  onSelect,
-  onOpen,
-}: {
-  folder: Folder;
-  selected: boolean;
-  count: number;
-  onSelect: (checked: boolean, shiftKey?: boolean) => void;
-  onOpen: () => void;
-}) {
-  const tint = FOLDER_TINT[folder.color];
 
-  return (
-    <div className="group/folder-row relative flex items-center">
-      <div
-        className={cn(
-          "absolute left-3.5 z-10 transition-opacity duration-150",
-          selected ? "opacity-100" : "opacity-0 group-hover/folder-row:opacity-100"
-        )}
-      >
-        <Checkbox
-          checked={selected}
-          onCheckedChange={(checked) => onSelect(checked === true)}
-          className="border-primary/30 bg-white/60 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-white"
-        />
-      </div>
 
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (e.shiftKey) {
-            onSelect(!selected, true);
-            return;
-          }
-          if (!selected) onSelect(true, false);
-        }}
-        onDoubleClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          onOpen();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            e.stopPropagation();
-            onOpen();
-            return;
-          }
-          if (e.key === " ") {
-            e.preventDefault();
-            e.stopPropagation();
-            if (e.shiftKey) {
-              onSelect(!selected, true);
-              return;
-            }
-            if (!selected) onSelect(true, false);
-          }
-        }}
-        className={cn(
-          "grid flex-1 items-center gap-4 rounded-lg border py-2.5 pr-12 pl-[42px]",
-          "grid-cols-[24px_minmax(0,1fr)_96px_96px]",
-          "transition-colors duration-150",
-          selected
-            ? "border-primary/40 bg-primary/[0.02]"
-            : "border-transparent hover:border-border/80 hover:bg-white",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-        )}
-      >
-        <span className={cn(
-          "flex size-6 shrink-0 items-center justify-center rounded-md ring-1 transition-colors duration-200",
-          tint.bg,
-          tint.ring,
-          tint.text
-        )}>
-          <FolderIcon className="size-[14px]" strokeWidth={1.8} />
-        </span>
 
-        <div className="min-w-0">
-          <span className="truncate text-[13.5px] font-medium text-foreground">
-            {folder.name}
-          </span>
-        </div>
 
-        <span className="text-right text-[12.5px] text-foreground tabular-nums">
-          {count} {count === 1 ? "file" : "files"}
-        </span>
-
-        <span className="text-right text-[12.5px] text-muted-foreground tabular-nums">
-          {formatDate(folder.createdAt)}
-        </span>
-      </div>
-
-      <div className="absolute right-2 top-1/2 -translate-y-1/2">
-        <FolderActionsMenu
-          folder={folder}
-          onOpen={onOpen}
-          variant="row"
-        />
-      </div>
-    </div>
-  );
-}
 
 const ROLE_HEADINGS = {
   student: {
@@ -355,10 +122,12 @@ const ROLE_EMPTY = {
 
 export default function DashboardPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const user = useSessionStore((s) => s.user);
   const openUpload = useUIStore((s) => s.openUpload);
   const openNewFolder = useUIStore((s) => s.openNewFolder);
   const openFolderUpload = useUIStore((s) => s.openFolderUpload);
+  const openShare = useUIStore((s) => s.openShare);
   const uploadsVersion = useUIStore((s) => s.uploadsVersion);
   const foldersVersion = useUIStore((s) => s.foldersVersion);
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
@@ -384,6 +153,7 @@ export default function DashboardPage() {
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
   const [foldersExpanded, setFoldersExpanded] = useState(false);
   const [folderGridColumns, setFolderGridColumns] = useState(5);
+  const [selectedPdfFile, setSelectedPdfFile] = useState<ArchivedFile | null>(null);
 
   const totalSelected = selectedFileIds.size + selectedFolderIds.size;
   const liveFolderById = useMemo(() => {
@@ -836,6 +606,36 @@ export default function DashboardPage() {
     setFolderSelectionAnchorId(null);
   }
 
+  function handleOpenFile(file: ArchivedFile) {
+    clearSelection();
+    if (file.kind === "pdf") {
+      setSelectedPdfFile(file);
+      return;
+    }
+    navigate(`/file/${file.id}`, { state: { folderTrail: normalizedFolderTrail } });
+  }
+
+  function handlePdfPreviewShare(file: ArchivedFile) {
+    openShare(file.id);
+  }
+
+  function handlePdfPreviewDetails(file: ArchivedFile) {
+    setSelectedPdfFile(null);
+    navigate(`/file/${file.id}`, { state: { folderTrail: normalizedFolderTrail } });
+  }
+
+  async function handlePdfPreviewDelete(file: ArchivedFile) {
+    try {
+      await deleteFile(file.id);
+      showDeleteToast({ kind: "file", name: file.name });
+      setSelectedPdfFile(null);
+      bumpUploadsVersion();
+      bumpFoldersVersion();
+    } catch {
+      toast.error("Couldn't delete file");
+    }
+  }
+
   async function handleBulkDelete() {
     if (totalSelected === 0) return;
     try {
@@ -1225,9 +1025,10 @@ export default function DashboardPage() {
                   <FileCard
                     key={file.id}
                     file={file}
-                    folderTrail={folderTrail}
+                    folderTrail={normalizedFolderTrail}
                     selected={selectedFileIds.has(file.id)}
                     onSelectChange={(c, shiftKey) => toggleSelection(file.id, c, shiftKey)}
+                    onOpenFile={handleOpenFile}
                   />
                 ))}
               </div>
@@ -1244,9 +1045,10 @@ export default function DashboardPage() {
                   <FileRow
                     key={file.id}
                     file={file}
-                    folderTrail={folderTrail}
+                    folderTrail={normalizedFolderTrail}
                     selected={selectedFileIds.has(file.id)}
                     onSelectChange={(c, shiftKey) => toggleSelection(file.id, c, shiftKey)}
+                    onOpenFile={handleOpenFile}
                   />
                 ))}
               </div>
@@ -1323,6 +1125,19 @@ export default function DashboardPage() {
         description={`"${activeFolder?.name}" will be permanently deleted. Files inside will be moved to All files.`}
         confirmLabel="Delete folder"
         onConfirm={() => void handleDeleteActiveFolder()}
+      />
+
+      <PdfPreviewModal
+        open={selectedPdfFile !== null}
+        file={selectedPdfFile}
+        onShare={handlePdfPreviewShare}
+        onDetails={handlePdfPreviewDetails}
+        onDelete={handlePdfPreviewDelete}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setSelectedPdfFile(null);
+          }
+        }}
       />
       <ConfirmDialog
         open={confirmBulkDeleteOpen}
