@@ -18,7 +18,6 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
 import { listFolders, moveFileToFolder, uploadFile } from "@/lib/api";
 import type { Folder } from "@/lib/types";
-import { formatBytes, formatPercent } from "@/lib/format";
 import { toast } from "sonner";
 import { showFileUploadToast } from "@/components/shared/uploadToast";
 

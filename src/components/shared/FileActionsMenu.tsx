@@ -38,9 +38,10 @@ interface FileActionsMenuProps {
   /** Visual variant for the trigger button. */
   variant?: "card" | "row";
   folderTrail?: Folder[];
+  onOpenFile?: (file: ArchivedFile) => void;
 }
 
-export default function FileActionsMenu({ file, variant = "card", folderTrail }: FileActionsMenuProps) {
+export default function FileActionsMenu({ file, variant = "card", folderTrail, onOpenFile }: FileActionsMenuProps) {
   const navigate = useNavigate();
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
   const [folders, setFolders] = useState<Folder[] | null>(null);
@@ -61,6 +62,10 @@ export default function FileActionsMenu({ file, variant = "card", folderTrail }:
   }
 
   function handleOpen() {
+    if (onOpenFile) {
+      onOpenFile(file);
+      return;
+    }
     navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
   }
 

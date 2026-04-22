@@ -10,7 +10,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { formatBytes, formatDate } from "@/lib/format";
-import type { ArchivedFile, FileKind } from "@/lib/types";
+import type { ArchivedFile, FileKind, Folder } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { useShellSearch } from "@/components/layout/AppShell";
 import SavingsBadge from "./SavingsBadge";
@@ -21,6 +21,7 @@ interface FileCardProps {
   folderTrail?: Folder[];
   selected?: boolean;
   onSelectChange?: (checked: boolean, shiftKey?: boolean) => void;
+  onOpenFile?: (file: ArchivedFile) => void;
 }
 
 function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: string } {
@@ -40,7 +41,7 @@ function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: 
   }
 }
 
-export default function FileCard({ file, folderTrail, selected, onSelectChange }: FileCardProps) {
+export default function FileCard({ file, folderTrail, selected, onSelectChange, onOpenFile }: FileCardProps) {
   const navigate = useNavigate();
   const { setSearch } = useShellSearch();
   const config = fileTypeConfig(file.kind);
@@ -65,6 +66,10 @@ export default function FileCard({ file, folderTrail, selected, onSelectChange }
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (onOpenFile) {
+      onOpenFile(file);
+      return;
+    }
     navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
   };
 
@@ -72,6 +77,10 @@ export default function FileCard({ file, folderTrail, selected, onSelectChange }
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
+      if (onOpenFile) {
+        onOpenFile(file);
+        return;
+      }
       navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
       return;
     }
@@ -174,7 +183,7 @@ export default function FileCard({ file, folderTrail, selected, onSelectChange }
         </div>
       </div>
       </div>
-      <FileActionsMenu file={file} variant="card" folderTrail={folderTrail} />
+      <FileActionsMenu file={file} variant="card" folderTrail={folderTrail} onOpenFile={onOpenFile} />
 
       <div 
         className={cn(

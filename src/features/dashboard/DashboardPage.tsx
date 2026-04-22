@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   ArrowUpDown,
   ChevronDown,
@@ -32,6 +32,7 @@ import { useShellSearch } from "@/components/layout/AppShell";
 import FileCard from "@/components/shared/FileCard";
 import FileRow from "@/components/shared/FileRow";
 import FolderTile from "@/components/shared/FolderTile";
+import PdfPreviewModal from "@/components/shared/PdfPreviewModal";
 // FolderActionsMenu is only used in FolderListRow
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
@@ -57,7 +58,7 @@ import { toast } from "sonner";
 import type { SelectOption } from "@/components/shared/SelectMenu";
 type KindFilter = "all" | "folder" | FileKind;
 type SortKey = "recent" | "largest" | "most_saved";
-type ViewMode = "grid" | "list";
+export type ViewMode = "grid" | "list";
 
 const KIND_OPTIONS: SelectOption<KindFilter>[] = [
   { value: "all", label: "All types", icon: FileIcon },
@@ -121,10 +122,12 @@ const ROLE_EMPTY = {
 
 export default function DashboardPage() {
   const location = useLocation();
+  const navigate = useNavigate();
   const user = useSessionStore((s) => s.user);
   const openUpload = useUIStore((s) => s.openUpload);
   const openNewFolder = useUIStore((s) => s.openNewFolder);
   const openFolderUpload = useUIStore((s) => s.openFolderUpload);
+  const openShare = useUIStore((s) => s.openShare);
   const uploadsVersion = useUIStore((s) => s.uploadsVersion);
   const foldersVersion = useUIStore((s) => s.foldersVersion);
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
@@ -150,6 +153,7 @@ export default function DashboardPage() {
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
   const [foldersExpanded, setFoldersExpanded] = useState(false);
   const [folderGridColumns, setFolderGridColumns] = useState(5);
+  const [selectedPdfFile, setSelectedPdfFile] = useState<ArchivedFile | null>(null);
 
   const totalSelected = selectedFileIds.size + selectedFolderIds.size;
   const liveFolderById = useMemo(() => {
@@ -601,6 +605,36 @@ export default function DashboardPage() {
     setFolderSelectionAnchorId(null);
   }
 
+  function handleOpenFile(file: ArchivedFile) {
+    clearSelection();
+    if (file.kind === "pdf") {
+      setSelectedPdfFile(file);
+      return;
+    }
+    navigate(`/file/${file.id}`, { state: { folderTrail: normalizedFolderTrail } });
+  }
+
+  function handlePdfPreviewShare(file: ArchivedFile) {
+    openShare(file.id);
+  }
+
+  function handlePdfPreviewDetails(file: ArchivedFile) {
+    setSelectedPdfFile(null);
+    navigate(`/file/${file.id}`, { state: { folderTrail: normalizedFolderTrail } });
+  }
+
+  async function handlePdfPreviewDelete(file: ArchivedFile) {
+    try {
+      await deleteFile(file.id);
+      showDeleteToast({ kind: "file", name: file.name });
+      setSelectedPdfFile(null);
+      bumpUploadsVersion();
+      bumpFoldersVersion();
+    } catch {
+      toast.error("Couldn't delete file");
+    }
+  }
+
   async function handleBulkDelete() {
     if (totalSelected === 0) return;
     try {
@@ -990,9 +1024,10 @@ export default function DashboardPage() {
                   <FileCard
                     key={file.id}
                     file={file}
-                    folderTrail={folderTrail}
+                    folderTrail={normalizedFolderTrail}
                     selected={selectedFileIds.has(file.id)}
                     onSelectChange={(c, shiftKey) => toggleSelection(file.id, c, shiftKey)}
+                    onOpenFile={handleOpenFile}
                   />
                 ))}
               </div>
@@ -1009,9 +1044,10 @@ export default function DashboardPage() {
                   <FileRow
                     key={file.id}
                     file={file}
-                    folderTrail={folderTrail}
+                    folderTrail={normalizedFolderTrail}
                     selected={selectedFileIds.has(file.id)}
                     onSelectChange={(c, shiftKey) => toggleSelection(file.id, c, shiftKey)}
+                    onOpenFile={handleOpenFile}
                   />
                 ))}
               </div>
@@ -1088,6 +1124,19 @@ export default function DashboardPage() {
         description={`"${activeFolder?.name}" will be permanently deleted. Files inside will be moved to All files.`}
         confirmLabel="Delete folder"
         onConfirm={() => void handleDeleteActiveFolder()}
+      />
+
+      <PdfPreviewModal
+        open={selectedPdfFile !== null}
+        file={selectedPdfFile}
+        onShare={handlePdfPreviewShare}
+        onDetails={handlePdfPreviewDetails}
+        onDelete={handlePdfPreviewDelete}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setSelectedPdfFile(null);
+          }
+        }}
       />
       <ConfirmDialog
         open={confirmBulkDeleteOpen}
