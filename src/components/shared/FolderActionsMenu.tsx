@@ -21,6 +21,7 @@ import { deleteFolder } from "@/lib/api";
 import { useUIStore } from "@/lib/store";
 import type { Folder } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { showDeleteToast } from "./deleteToast";
 
 interface FolderActionsMenuProps {
   folder: Folder;
@@ -38,7 +39,7 @@ export default function FolderActionsMenu({ folder, onOpen }: FolderActionsMenuP
   async function handleDelete() {
     try {
       await deleteFolder(folder.id);
-      toast.success("Folder deleted");
+      showDeleteToast({ kind: "folder", name: folder.name });
       bumpFoldersVersion();
     } catch {
       toast.error("Couldn't delete folder");

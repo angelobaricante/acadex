@@ -31,6 +31,7 @@ import {
 import { useUIStore } from "@/lib/store";
 import type { ArchivedFile, Folder } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { showDeleteToast } from "./deleteToast";
 
 interface FileActionsMenuProps {
   file: ArchivedFile;
@@ -92,7 +93,7 @@ export default function FileActionsMenu({ file, variant = "card", folderTrail }:
   async function handleDelete() {
     try {
       await deleteFile(file.id);
-      toast.success("File deleted");
+      showDeleteToast({ kind: "file", name: file.name });
       bumpFoldersVersion();
     } catch {
       toast.error("Couldn't delete file");

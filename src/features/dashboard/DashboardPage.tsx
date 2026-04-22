@@ -38,6 +38,7 @@ import FileRow from "@/components/shared/FileRow";
 import FolderTile from "@/components/shared/FolderTile";
 import EmptyState from "@/components/shared/EmptyState";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import { showDeleteToast } from "@/components/shared/deleteToast";
 import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import {
@@ -320,7 +321,7 @@ export default function DashboardPage() {
     if (!activeFolder) return;
     try {
       await deleteFolder(activeFolder.id);
-      toast.success("Folder deleted");
+      showDeleteToast({ kind: "folder", name: activeFolder.name });
       setFolderTrail((prev) => prev.slice(0, -1));
       bumpFoldersVersion();
     } catch {
@@ -383,7 +384,7 @@ export default function DashboardPage() {
         ...Array.from(selectedFileIds).map((id) => deleteFile(id)),
         ...Array.from(selectedFolderIds).map((id) => deleteFolder(id)),
       ]);
-      toast.success(`${totalSelected} items deleted`);
+      showDeleteToast({ kind: "bulk", count: totalSelected });
       clearSelection();
       bumpUploadsVersion();
       bumpFoldersVersion();

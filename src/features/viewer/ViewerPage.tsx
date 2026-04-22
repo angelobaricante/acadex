@@ -11,6 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import SavingsBadge from "@/components/shared/SavingsBadge";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
+import { showDeleteToast } from "@/components/shared/deleteToast";
 import { formatBytes, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import FilePreview from "./FilePreview";
@@ -117,7 +118,7 @@ export default function ViewerPage() {
     if (!file) return;
     try {
       await deleteFile(file.id);
-      toast.success(`Deleted ${file.name}`);
+      showDeleteToast({ kind: "file", name: file.name });
       useUIStore.getState().bumpUploadsVersion();
       navigate("/", { state: { folderTrail: backFolderTrail } });
     } catch {
