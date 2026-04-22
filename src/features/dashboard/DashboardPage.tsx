@@ -147,22 +147,18 @@ export default function DashboardPage() {
   }, [setCurrentFolderId]);
 
   // Fetch folders list on mount / when they change.
+  // When inside a folder, fetch subfolders; when at root, fetch root-level folders.
   useEffect(() => {
     let cancelled = false;
-    listFolders().then((result) => {
+    const targetFolderId = activeFolder?.id ?? null;
+    listFolders(targetFolderId).then((result) => {
       if (cancelled) return;
       setFolders(result);
-      // If the active folder no longer exists, clear it.
-      if (activeFolder && !result.find((f) => f.id === activeFolder.id)) {
-        setActiveFolder(null);
-      }
     });
     return () => {
       cancelled = true;
     };
-    // activeFolder intentionally not a dep: we only want to reconcile when folders change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [foldersVersion, uploadsVersion]);
+  }, [foldersVersion, uploadsVersion, activeFolder]);
 
   // Fetch the full file list (respecting ownerId) once per data-change event.
   // All filtering/sorting below is client-side so tab switches are instant —
@@ -243,7 +239,7 @@ export default function DashboardPage() {
     KIND_OPTIONS.find((o) => o.value === kind)?.label ?? "All types";
 
   const showFoldersStrip =
-    activeFolder === null && folders !== null && folders.length > 0;
+    folders !== null && folders.length > 0;
 
   const canDeleteActiveFolder =
     activeFolder !== null &&

@@ -71,7 +71,7 @@ export default function NewFolderDialog() {
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      await createFolder(trimmed, color);
+      await createFolder(trimmed, color, currentFolderId);
       const tint = FOLDER_TINT[color];
       toast.custom((id) => (
         <div
