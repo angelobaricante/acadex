@@ -128,6 +128,7 @@ export default function DashboardPage() {
   const observer = useRef<IntersectionObserver | null>(null);
   const [confirmDeleteFolderOpen, setConfirmDeleteFolderOpen] = useState(false);
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
+  const [foldersExpanded, setFoldersExpanded] = useState(false);
 
   const totalSelected = selectedFileIds.size + selectedFolderIds.size;
 
@@ -501,26 +502,50 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Folders strip */}
-      {showFoldersStrip && (
-        <section className="flex flex-col gap-2">
-          <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-            Folders
-          </span>
-          <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-            {folders!.map((folder) => (
-              <FolderTile
-                key={folder.id}
-                folder={folder}
-                fileCount={fileCountsByFolder[folder.id] ?? 0}
-                selected={selectedFolderIds.has(folder.id)}
-                onSelectChange={(c) => toggleFolderSelection(folder.id, c)}
-                onClick={() => handleOpenFolder(folder)}
-              />
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Folders grid */}
+      {showFoldersStrip && (() => {
+        const COLS = 5;
+        const MAX_VISIBLE_ROWS = 2;
+        const MAX_VISIBLE = COLS * MAX_VISIBLE_ROWS; // 10
+        const hasMore = folders!.length > MAX_VISIBLE;
+        const visibleFolders = hasMore && !foldersExpanded
+          ? folders!.slice(0, MAX_VISIBLE)
+          : folders!;
+
+        return (
+          <section className="flex flex-col gap-2">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              Folders
+            </span>
+
+            <div className="grid grid-cols-5 gap-2">
+              {visibleFolders.map((folder) => (
+                <FolderTile
+                  key={folder.id}
+                  folder={folder}
+                  fileCount={fileCountsByFolder[folder.id] ?? 0}
+                  selected={selectedFolderIds.has(folder.id)}
+                  onSelectChange={(c) => toggleFolderSelection(folder.id, c)}
+                  onClick={() => handleOpenFolder(folder)}
+                />
+              ))}
+            </div>
+
+            {hasMore && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFoldersExpanded((v) => !v);
+                }}
+                className="self-start text-[12px] font-medium text-primary underline-offset-4 transition-colors hover:underline"
+              >
+                {foldersExpanded ? "View less" : "View more"}
+              </button>
+            )}
+          </section>
+        );
+      })()}
 
       {/* Filters row */}
       <div className="flex w-full flex-wrap items-center gap-2">
