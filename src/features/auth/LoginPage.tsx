@@ -120,7 +120,7 @@ export default function LoginPage() {
 }
   return (
     <div
-      className="relative min-h-full overflow-hidden bg-[hsl(48_25%_98%)]"
+      className="relative h-full min-h-screen overflow-hidden bg-[hsl(48_25%_98%)]"
     >
       {/* Ambient green radial glow, anchored top-left for asymmetry */}
       <div
@@ -146,7 +146,7 @@ export default function LoginPage() {
         }}
       />
 
-      <main className="relative mx-auto flex min-h-screen w-full max-w-[440px] flex-col justify-center px-4 py-10 sm:px-6 sm:py-16">
+      <main className="relative mx-auto flex h-full min-h-screen w-full max-w-[440px] flex-col justify-center px-4 py-6 sm:px-6 sm:py-10">
         {/* Wordmark */}
         <div className="mb-8 flex items-center gap-2.5 sm:mb-10">
           <div className="flex size-8 items-center justify-center rounded-[7px] bg-primary text-primary-foreground shadow-sm">
