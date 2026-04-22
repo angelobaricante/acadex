@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  ArrowDownAZ,
+  ArrowDownZA,
   ArrowUpDown,
   ChevronDown,
   ChevronRight,
@@ -57,7 +59,7 @@ import { toast } from "sonner";
 
 import type { SelectOption } from "@/components/shared/SelectMenu";
 type KindFilter = "all" | "folder" | FileKind;
-type SortKey = "recent" | "largest" | "most_saved";
+type SortKey = "recent" | "largest" | "most_saved" | "name_asc" | "name_desc";
 export type ViewMode = "grid" | "list";
 
 const KIND_OPTIONS: SelectOption<KindFilter>[] = [
@@ -73,6 +75,8 @@ const KIND_OPTIONS: SelectOption<KindFilter>[] = [
 
 const SORT_OPTIONS: SelectOption<SortKey>[] = [
   { value: "recent", label: "Most recent", icon: Clock },
+  { value: "name_asc", label: "Name (A–Z)", icon: ArrowDownAZ },
+  { value: "name_desc", label: "Name (Z–A)", icon: ArrowDownZA },
   { value: "largest", label: "Largest original", icon: HardDrive },
   { value: "most_saved", label: "Most saved", icon: TrendingDown },
 ];
@@ -86,6 +90,18 @@ const SORT_OPTIONS: SelectOption<SortKey>[] = [
 
 
 
+
+// Module-level cache so navigating away and back to the dashboard keeps data
+// visible instantly instead of flashing skeletons while refetching.
+const dashboardCache: {
+  ownerId: string | undefined;
+  allFiles: ArchivedFile[] | null;
+  allFolders: Folder[] | null;
+} = {
+  ownerId: undefined,
+  allFiles: null,
+  allFolders: null,
+};
 
 const ROLE_HEADINGS = {
   student: {
@@ -138,9 +154,11 @@ export default function DashboardPage() {
   const [kind, setKind] = useState<KindFilter>("all");
   const [sort, setSort] = useState<SortKey>("recent");
   const [view, setView] = useState<ViewMode>("grid");
+  const ownerIdForInit = user?.role === "student" ? user.id : undefined;
+  const cacheValid = dashboardCache.ownerId === ownerIdForInit;
   const [folders, setFolders] = useState<Folder[] | null>(null);
-  const [allFolders, setAllFolders] = useState<Folder[] | null>(null);
-  const [allFiles, setAllFiles] = useState<ArchivedFile[] | null>(null);
+  const [allFolders, setAllFolders] = useState<Folder[] | null>(cacheValid ? dashboardCache.allFolders : null);
+  const [allFiles, setAllFiles] = useState<ArchivedFile[] | null>(cacheValid ? dashboardCache.allFiles : null);
   const [folderTrail, setFolderTrail] = useState<Folder[]>([]);
   const [displayLimit, setDisplayLimit] = useState(16);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -241,6 +259,7 @@ export default function DashboardPage() {
     listFolders().then((result) => {
       if (cancelled) return;
       setAllFolders(result);
+      dashboardCache.allFolders = result;
     });
     return () => {
       cancelled = true;
@@ -256,6 +275,8 @@ export default function DashboardPage() {
     listFiles({ ownerId }).then((result) => {
       if (cancelled) return;
       setAllFiles(result);
+      dashboardCache.ownerId = ownerId;
+      dashboardCache.allFiles = result;
     });
     return () => {
       cancelled = true;
@@ -340,6 +361,10 @@ export default function DashboardPage() {
     const sorted = [...result];
     if (sort === "recent") {
       sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } else if (sort === "name_asc") {
+      sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }));
+    } else if (sort === "name_desc") {
+      sorted.sort((a, b) => b.name.localeCompare(a.name, undefined, { sensitivity: "base", numeric: true }));
     } else if (sort === "largest") {
       sorted.sort((a, b) => b.originalBytes - a.originalBytes);
     } else {
@@ -460,6 +485,10 @@ export default function DashboardPage() {
     const sorted = [...result];
     if (sort === "recent") {
       sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } else if (sort === "name_asc") {
+      sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }));
+    } else if (sort === "name_desc") {
+      sorted.sort((a, b) => b.name.localeCompare(a.name, undefined, { sensitivity: "base", numeric: true }));
     } else if (sort === "largest") {
       sorted.sort(
         (a, b) =>

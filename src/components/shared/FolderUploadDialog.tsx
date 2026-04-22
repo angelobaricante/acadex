@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, FolderUp, Folder as FolderIcon } from "lucide-react";
+import { Check, ChevronDown, FolderUp, Folder as FolderIcon, FolderPlus } from "lucide-react";
 import BrandSpinner from "@/components/shared/BrandSpinner";
 import {
   Dialog,
@@ -13,11 +13,13 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
-import { listFolders, moveFileToFolder, uploadFile } from "@/lib/api";
+import { createFolder, listFolders, moveFileToFolder, uploadFile } from "@/lib/api";
 import type { Folder } from "@/lib/types";
 import { toast } from "sonner";
 import { showFileUploadToast, showFolderUploadToast } from "@/components/shared/uploadToast";
@@ -33,6 +35,36 @@ export default function FolderUploadDialog() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingSubmitting, setCreatingSubmitting] = useState(false);
+  const newFolderInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (creatingFolder) {
+      const id = setTimeout(() => newFolderInputRef.current?.focus(), 0);
+      return () => clearTimeout(id);
+    }
+  }, [creatingFolder]);
+
+  async function handleCreateFolder() {
+    const name = newFolderName.trim();
+    if (!name || creatingSubmitting) return;
+    setCreatingSubmitting(true);
+    try {
+      const folder = await createFolder(name);
+      setFolders((prev) => [folder, ...prev]);
+      setTargetFolderId(folder.id);
+      setNewFolderName("");
+      setCreatingFolder(false);
+      useUIStore.getState().bumpFoldersVersion();
+      toast.success(`Folder '${folder.name}' created`);
+    } catch {
+      toast.error("Couldn't create folder");
+    } finally {
+      setCreatingSubmitting(false);
+    }
+  }
 
   // Load folders + seed initial target when dialog opens.
   useEffect(() => {
@@ -184,7 +216,7 @@ export default function FolderUploadDialog() {
     >
       <DialogContent
         className={cn(
-          "sm:max-w-[440px] gap-5 p-6",
+          "sm:max-w-[440px] gap-5 p-6 overflow-hidden",
           "shadow-[0_1px_0_rgba(16,24,40,0.02),0_20px_40px_-12px_rgba(16,24,40,0.18)]"
         )}
       >
@@ -260,8 +292,67 @@ export default function FolderUploadDialog() {
                   )}
                 </DropdownMenuItem>
               ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setCreatingFolder(true);
+                }}
+                className="gap-2 px-2 py-1.5 text-[13px] text-primary focus:text-primary focus:bg-primary/10"
+              >
+                <FolderPlus className="size-[14px]" strokeWidth={1.8} />
+                <span>New folder</span>
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {creatingFolder && (
+            <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/[0.04] p-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
+              <FolderPlus className="ml-1 size-[14px] shrink-0 text-primary" strokeWidth={1.8} />
+              <Input
+                ref={newFolderInputRef}
+                type="text"
+                value={newFolderName}
+                onChange={(e) => setNewFolderName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleCreateFolder();
+                  } else if (e.key === "Escape") {
+                    e.preventDefault();
+                    setCreatingFolder(false);
+                    setNewFolderName("");
+                  }
+                }}
+                disabled={creatingSubmitting}
+                maxLength={64}
+                placeholder="Folder name"
+                className="h-7 flex-1 border-transparent bg-transparent px-1.5 text-[12.5px] shadow-none focus-visible:border-primary/40 focus-visible:bg-white"
+              />
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setCreatingFolder(false);
+                  setNewFolderName("");
+                }}
+                disabled={creatingSubmitting}
+                className="h-7 px-2 text-[12px] text-muted-foreground"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleCreateFolder()}
+                disabled={!newFolderName.trim() || creatingSubmitting}
+                className="h-7 px-2.5 text-[12px]"
+              >
+                {creatingSubmitting ? "Creating…" : "Create"}
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Drop zone */}
