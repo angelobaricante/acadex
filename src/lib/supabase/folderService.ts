@@ -88,3 +88,45 @@ export async function deleteFolderRecordById(folderId: string): Promise<void> {
         throw error;
     }
 }
+
+export async function listFolderRecordsByRootId(rootFolderId: string): Promise<FolderRow[]> {
+    const all = await listFolderRecords();
+
+    const byParent = new Map<string, FolderRow[]>();
+    for (const folder of all) {
+        if (!folder.parent_folder_id) continue;
+        const siblings = byParent.get(folder.parent_folder_id) ?? [];
+        siblings.push(folder);
+        byParent.set(folder.parent_folder_id, siblings);
+    }
+
+    const root = all.find((folder) => folder.id === rootFolderId);
+    if (!root) {
+        return [];
+    }
+
+    const collected: FolderRow[] = [];
+    const stack: FolderRow[] = [root];
+
+    while (stack.length > 0) {
+        const current = stack.pop()!;
+        collected.push(current);
+        const children = byParent.get(current.id) ?? [];
+        for (const child of children) {
+            stack.push(child);
+        }
+    }
+
+    return collected;
+}
+
+export async function deleteFolderRecordByDriveId(driveFolderId: string): Promise<void> {
+    const { error } = await supabase
+        .from("folders")
+        .delete()
+        .eq("drive_folder_id", driveFolderId);
+
+    if (error) {
+        throw error;
+    }
+}

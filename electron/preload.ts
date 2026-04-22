@@ -5,9 +5,10 @@ const bridge: AcaDexBridge = {
     compressFile: (
         fileName: string,
         mimeType: string,
-        buffer: ArrayBuffer
+        buffer: ArrayBuffer,
+        allowLargerOutput = false
     ): Promise<CompressFileResult> =>
-        ipcRenderer.invoke("compress-file", fileName, mimeType, buffer),
+        ipcRenderer.invoke("compress-file", fileName, mimeType, buffer, allowLargerOutput),
 };
 
 contextBridge.exposeInMainWorld("acadex", bridge);

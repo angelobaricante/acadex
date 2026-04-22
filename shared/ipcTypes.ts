@@ -2,6 +2,7 @@ export interface CompressFileArgs {
     fileName: string;
     mimeType: string;
     buffer: ArrayBuffer;
+    allowLargerOutput?: boolean;
 }
 
 export interface CompressFileResult {
@@ -15,6 +16,7 @@ export interface AcaDexBridge {
     compressFile: (
         fileName: string,
         mimeType: string,
-        buffer: ArrayBuffer
+        buffer: ArrayBuffer,
+        allowLargerOutput?: boolean
     ) => Promise<CompressFileResult>;
 }

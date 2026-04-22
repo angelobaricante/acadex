@@ -35,6 +35,14 @@ describe("formatPercent", () => {
   it("handles zero", () => {
     expect(formatPercent(0)).toBe("0%");
   });
+
+  it("shows <1% for tiny positive values", () => {
+    expect(formatPercent(0.004)).toBe("<1%");
+  });
+
+  it("clamps negative values to 0%", () => {
+    expect(formatPercent(-0.03)).toBe("<0%");
+  });
 });
 
 describe("formatDate", () => {

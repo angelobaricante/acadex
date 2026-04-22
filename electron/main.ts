@@ -37,7 +37,8 @@ ipcMain.handle(
         _event,
         fileName: string,
         mimeType: string,
-        buffer: ArrayBuffer
+        buffer: ArrayBuffer,
+        allowLargerOutput = false
     ): Promise<CompressFileResult> => {
         const ext = fileName.split(".").pop()?.toLowerCase() ?? "";
         const inputBuffer = Buffer.from(new Uint8Array(buffer));
@@ -61,7 +62,7 @@ ipcMain.handle(
         }
 
         let fallbackToOriginal = false;
-        if (outputBytes.byteLength > inputBuffer.byteLength) {
+        if (!allowLargerOutput && outputBytes.byteLength > inputBuffer.byteLength) {
             outputBytes = inputBuffer;
             fallbackToOriginal = true;
         }

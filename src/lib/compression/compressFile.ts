@@ -9,6 +9,10 @@ export interface RendererCompressionResult {
     savedPercent: number;
 }
 
+interface CompressFileOptions {
+    allowLargerOutput?: boolean;
+}
+
 const PPTX_MIME =
     "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 const DOCX_MIME =
@@ -82,15 +86,20 @@ function logCompressionDetails(
     });
 }
 
-export async function compressFile(file: File): Promise<RendererCompressionResult> {
+export async function compressFile(
+    file: File,
+    options: CompressFileOptions = {}
+): Promise<RendererCompressionResult> {
     const originalSize = file.size;
     const originalBytes = new Uint8Array(await file.arrayBuffer());
+    const allowLargerOutput = options.allowLargerOutput ?? false;
 
     if (window.acadex) {
         const result: CompressFileResult = await window.acadex.compressFile(
             file.name,
             file.type,
-            originalBytes.buffer
+            originalBytes.buffer,
+            allowLargerOutput
         );
 
         const compressedBytes = new Uint8Array(result.compressedBytes);
@@ -118,7 +127,7 @@ export async function compressFile(file: File): Promise<RendererCompressionResul
             strategy = "office";
         }
 
-        if (compressedBytes.byteLength > originalBytes.byteLength) {
+        if (!allowLargerOutput && compressedBytes.byteLength > originalBytes.byteLength) {
             compressedBytes = originalBytes;
             fallbackToOriginal = true;
         }

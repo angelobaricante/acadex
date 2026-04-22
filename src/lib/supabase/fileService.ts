@@ -24,9 +24,7 @@ export async function createFileRecord(params: CreateFileParams): Promise<FileRo
 
     const compressionRatio =
         originalSizeBytes > 0
-            ? parseFloat(
-                ((originalSizeBytes - compressedSizeBytes) / originalSizeBytes).toFixed(2)
-            )
+            ? (originalSizeBytes - compressedSizeBytes) / originalSizeBytes
             : 0;
 
     const insertPayload = {
@@ -114,6 +112,70 @@ export async function clearFolderFromFiles(folderId: string): Promise<void> {
         .from("files")
         .update({ folder_id: null })
         .eq("folder_id", folderId);
+
+    if (error) {
+        throw error;
+    }
+}
+
+export async function hasDuplicateFileForUser(
+    uploadedBy: string,
+    name: string,
+    mimeType: string,
+    originalSizeBytes: number,
+    folderId: string | null
+): Promise<boolean> {
+    let query = supabase
+        .from("files")
+        .select("id", { count: "exact", head: true })
+        .eq("uploaded_by", uploadedBy)
+        .eq("name", name)
+        .eq("mime_type", mimeType)
+        .eq("original_size_bytes", originalSizeBytes)
+        .eq("is_deleted_on_drive", false);
+
+    if (folderId) {
+        query = query.eq("folder_id", folderId);
+    } else {
+        query = query.is("folder_id", null);
+    }
+
+    const { count, error } = await query;
+
+    if (error) {
+        throw error;
+    }
+
+    return (count ?? 0) > 0;
+}
+
+export async function listFilesByFolderIds(folderIds: string[]): Promise<FileRow[]> {
+    if (folderIds.length === 0) {
+        return [];
+    }
+
+    const { data, error } = await supabase
+        .from("files")
+        .select("*")
+        .in("folder_id", folderIds)
+        .eq("is_deleted_on_drive", false);
+
+    if (error) {
+        throw error;
+    }
+
+    return data as FileRow[];
+}
+
+export async function deleteFileRecordsByFolderIds(folderIds: string[]): Promise<void> {
+    if (folderIds.length === 0) {
+        return;
+    }
+
+    const { error } = await supabase
+        .from("files")
+        .delete()
+        .in("folder_id", folderIds);
 
     if (error) {
         throw error;

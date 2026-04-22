@@ -12,7 +12,11 @@ export function formatBytes(bytes: number): string {
 }
 
 export function formatPercent(ratio: number): string {
-  return `${Math.round(ratio * 100)}%`;
+  if (ratio < 0) return "<0%";
+  const positiveRatio = Math.max(0, ratio);
+  const percent = positiveRatio * 100;
+  if (percent > 0 && percent < 1) return "<1%";
+  return `${Math.round(percent)}%`;
 }
 
 export function formatDate(iso: string): string {

@@ -18,11 +18,16 @@ import {
   createFileRecord,
   deleteFileRecordByDriveId,
   getFilesByDriveIds,
+  hasDuplicateFileForUser,
+  deleteFileRecordsByFolderIds,
+  listFilesByFolderIds,
 } from "./supabase/fileService";
 import {
   createFolderRecord,
   deleteFolderRecordById,
+  deleteFolderRecordByDriveId,
   getFolderById,
+  listFolderRecordsByRootId,
   listFolderRecords,
 } from "./supabase/folderService";
 import { supabase } from "./supabaseClient";
@@ -195,7 +200,9 @@ export async function listFiles(params: ListFilesParams = {}): Promise<ArchivedF
       const storedBytes = metadata?.storedBytes ?? previous?.storedBytes ?? driveFile.storedBytes;
       const computedCompressionRatio =
         originalBytes > 0 ? (originalBytes - storedBytes) / originalBytes : driveFile.compressionRatio;
-      const compressionRatio = metadata?.compressionRatio ?? previous?.compressionRatio ?? computedCompressionRatio;
+      const compressionRatio = metadata
+        ? computedCompressionRatio
+        : (previous?.compressionRatio ?? driveFile.compressionRatio);
       const tags = metadata?.tags ?? previous?.tags ?? driveFile.tags;
       const folderId = metadata?.folderId ?? previous?.folderId;
       const createdAt = metadata?.uploadedAt ?? previous?.createdAt ?? driveFile.createdAt;
@@ -249,22 +256,6 @@ export async function getFile(id: string): Promise<ArchivedFile> {
 }
 
 export async function uploadFile(file: File, targetFolderId: string | null = null): Promise<ArchivedFile> {
-  const compression = await compressFile(file);
-  const archived = await driveUpload(compression.compressedFile);
-
-  const compressionRatio =
-    compression.originalSize > 0
-      ? (compression.originalSize - compression.compressedSize) / compression.originalSize
-      : 0;
-
-  const archivedWithCompression: ArchivedFile = {
-    ...archived,
-    originalBytes: compression.originalSize,
-    storedBytes: compression.compressedSize,
-    compressionRatio,
-    folderId: targetFolderId,
-  };
-
   const {
     data: { user: supabaseUser },
   } = await supabase.auth.getUser();
@@ -275,6 +266,35 @@ export async function uploadFile(file: File, targetFolderId: string | null = nul
       : getStableUploadedByFallback(currentUser?.id);
 
   const folderIdForSupabase = isUuid(targetFolderId) ? targetFolderId : null;
+  const isDuplicate = await hasDuplicateFileForUser(
+    uploadedBy,
+    file.name,
+    file.type || "application/octet-stream",
+    file.size,
+    folderIdForSupabase
+  );
+
+  if (isDuplicate) {
+    throw apiError("duplicate_file", `"${file.name}" already exists in this folder.`);
+  }
+
+  const compression = await compressFile(file);
+  const archived = await driveUpload(compression.compressedFile);
+  const originalSizeBytes = file.size;
+  const compressedSizeBytes = compression.compressedFile.size;
+
+  const compressionRatio =
+    originalSizeBytes > 0
+      ? (originalSizeBytes - compressedSizeBytes) / originalSizeBytes
+      : 0;
+
+  const archivedWithCompression: ArchivedFile = {
+    ...archived,
+    originalBytes: originalSizeBytes,
+    storedBytes: compressedSizeBytes,
+    compressionRatio,
+    folderId: targetFolderId,
+  };
 
   await createFileRecord({
     driveFileId: archivedWithCompression.id,
@@ -440,7 +460,22 @@ export async function uploadFolder(
 
     try {
       const parentFolder = await ensureFolder(parentRelativePath);
-      const compression = await compressFile(file);
+
+      const duplicateInFolder = await hasDuplicateFileForUser(
+        uploadedBy,
+        file.name,
+        file.type || "application/octet-stream",
+        file.size,
+        parentFolder.supabaseId
+      );
+
+      if (duplicateInFolder) {
+        throw apiError("duplicate_file", `"${file.name}" already exists in this folder.`);
+      }
+
+      const compression = await compressFile(file, { allowLargerOutput: true });
+      const originalSizeBytes = file.size;
+      const compressedSizeBytes = compression.compressedFile.size;
 
       const driveFile = await uploadFileToDrive(
         compression.compressedFile,
@@ -454,14 +489,14 @@ export async function uploadFolder(
         folderId: parentFolder.supabaseId,
         name: file.name,
         mimeType: driveFile.mimeType || file.type || "application/octet-stream",
-        originalSizeBytes: compression.originalSize,
-        compressedSizeBytes: compression.compressedSize,
+        originalSizeBytes,
+        compressedSizeBytes,
         uploadedBy,
       });
 
       const compressionRatio =
-        compression.originalSize > 0
-          ? (compression.originalSize - compression.compressedSize) / compression.originalSize
+        originalSizeBytes > 0
+          ? (originalSizeBytes - compressedSizeBytes) / originalSizeBytes
           : 0;
 
       const mimeType = driveFile.mimeType || file.type || "application/octet-stream";
@@ -473,8 +508,8 @@ export async function uploadFolder(
         kind: detectKind(mimeType, file.name),
         mimeType,
         ownerId: uploadedBy,
-        originalBytes: compression.originalSize,
-        storedBytes: compression.compressedSize,
+        originalBytes: originalSizeBytes,
+        storedBytes: compressedSizeBytes,
         compressionRatio,
         tags: [],
         createdAt,
@@ -485,8 +520,8 @@ export async function uploadFolder(
       });
 
       succeeded += 1;
-      totalOriginalBytes += compression.originalSize;
-      totalStoredBytes += compression.compressedSize;
+      totalOriginalBytes += originalSizeBytes;
+      totalStoredBytes += compressedSizeBytes;
     } catch (error) {
       console.error(`[uploadFolder] Failed to upload ${relativePath}:`, error);
       failed += 1;
@@ -671,13 +706,64 @@ export async function moveFileToFolder(
 export async function deleteFolder(id: string): Promise<void> {
   await sleep();
   const before = folders.length;
-  folders = folders.filter((f) => f.id !== id);
-  if (folders.length === before) throw apiError("not_found", `Folder ${id} not found`);
-  for (const file of files) {
-    if (file.folderId === id) file.folderId = null;
+  if (!folders.find((folder) => folder.id === id)) {
+    throw apiError("not_found", `Folder ${id} not found`);
   }
-  await clearFolderFromFiles(id);
-  await deleteFolderRecordById(id);
+
+  const subtree = await listFolderRecordsByRootId(id);
+  const folderRows = subtree.length > 0
+    ? subtree
+    : [{ id, drive_folder_id: "", parent_folder_id: null } as unknown as { id: string; drive_folder_id: string; parent_folder_id: string | null }];
+
+  const folderIds = folderRows.map((folder) => folder.id);
+  const filesInFolders = await listFilesByFolderIds(folderIds);
+
+  for (const fileRow of filesInFolders) {
+    try {
+      await driveDelete(fileRow.drive_file_id);
+    } catch {
+      // Continue cleanup so data stores stay consistent even when a Drive file is already missing.
+    }
+  }
+
+  const foldersByDepth = [...folderRows].sort((a, b) => {
+    const depth = (row: { id: string; parent_folder_id: string | null }) => {
+      let d = 0;
+      let parent = row.parent_folder_id;
+      const parentById = new Map(folderRows.map((folder) => [folder.id, folder]));
+      while (parent) {
+        const parentRow = parentById.get(parent);
+        if (!parentRow) break;
+        d += 1;
+        parent = parentRow.parent_folder_id;
+      }
+      return d;
+    };
+    return depth(b) - depth(a);
+  });
+
+  for (const folderRow of foldersByDepth) {
+    if (!folderRow.drive_folder_id) continue;
+    try {
+      await driveDelete(folderRow.drive_folder_id);
+    } catch {
+      // Continue cleanup so data stores stay consistent even when a Drive folder is already missing.
+    }
+  }
+
+  await deleteFileRecordsByFolderIds(folderIds);
+  for (const folderRow of folderRows) {
+    if (folderRow.drive_folder_id) {
+      await deleteFolderRecordByDriveId(folderRow.drive_folder_id);
+    } else {
+      await deleteFolderRecordById(folderRow.id);
+    }
+  }
+
+  folders = folders.filter((folder) => !folderIds.includes(folder.id));
+  files = files.filter((file) => !folderIds.includes(file.folderId ?? ""));
+
+  if (folders.length === before) throw apiError("not_found", `Folder ${id} not found`);
 }
 
 // --- Impact ---
