@@ -6,6 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:gateway": "node server/document-gateway-server.mjs",
+    "dev:secure": "concurrently \"npm run dev\" \"npm run dev:gateway\"",
     "dev:electron": "tsc -p electron/tsconfig.json && electron electron/dist/electron/main.js",
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:electron\"",
     "build": "tsc -b && vite build && tsc -p electron/tsconfig.json",

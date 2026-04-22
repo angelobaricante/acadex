@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FileText } from "lucide-react";
 import type { ArchivedFile } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { fetchDocumentBlob, isDocumentGatewayEnabled } from "@/lib/documentGateway";
 
 interface FilePreviewProps {
   file: ArchivedFile;
@@ -30,13 +31,79 @@ function Fallback({ message }: { message: string }) {
 
 export default function FilePreview({ file }: FilePreviewProps) {
   const [failed, setFailed] = useState(false);
+  const [blobPreviewUrl, setBlobPreviewUrl] = useState<string | null>(null);
+  const [loadingSecurePreview, setLoadingSecurePreview] = useState(false);
+  const gatewayEnabled = isDocumentGatewayEnabled();
+
+  const supportsInlinePreview =
+    file.kind === "pdf" || file.kind === "image" || file.kind === "video";
+  const isDriveHostedPreview = /(^|\.)drive\.google\.com$/i.test(
+    (() => {
+      try {
+        return new URL(file.previewUrl).hostname;
+      } catch {
+        return "";
+      }
+    })()
+  );
 
   // Reset failed state when the file changes.
   useEffect(() => {
     setFailed(false);
   }, [file.id]);
 
-  if (!file.previewUrl || failed) {
+  useEffect(() => {
+    let cancelled = false;
+    let objectUrl: string | null = null;
+
+    setBlobPreviewUrl(null);
+
+    if (!supportsInlinePreview || !gatewayEnabled) {
+      setLoadingSecurePreview(false);
+      return () => {
+        // No resources to clean up when secure preview is disabled.
+      };
+    }
+
+    setLoadingSecurePreview(true);
+    void (async () => {
+      try {
+        const blob = await fetchDocumentBlob(file.id);
+        if (cancelled) return;
+        objectUrl = URL.createObjectURL(blob);
+        setBlobPreviewUrl(objectUrl);
+      } catch {
+        if (cancelled) return;
+        setFailed(true);
+      } finally {
+        if (!cancelled) {
+          setLoadingSecurePreview(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [file.id, gatewayEnabled, supportsInlinePreview]);
+
+  const allowLegacyPreview = !gatewayEnabled && !isDriveHostedPreview;
+  const previewSrc = blobPreviewUrl ?? (allowLegacyPreview ? file.previewUrl : "");
+
+  if (loadingSecurePreview) {
+    return <Fallback message="Loading preview..." />;
+  }
+
+  if (!gatewayEnabled && isDriveHostedPreview && supportsInlinePreview) {
+    return (
+      <Fallback message="Sign in with Google to load this preview." />
+    );
+  }
+
+  if (!previewSrc || failed) {
     return <Fallback message="Preview not available" />;
   }
 
@@ -44,7 +111,7 @@ export default function FilePreview({ file }: FilePreviewProps) {
     return (
       <div className="flex h-full w-full items-center justify-center">
         <img
-          src={file.previewUrl}
+          src={previewSrc}
           alt={file.name}
           onError={() => setFailed(true)}
           className="max-h-full max-w-full rounded-lg object-contain shadow-[0_1px_0_rgba(16,24,40,0.02),0_8px_20px_-8px_rgba(16,24,40,0.10)]"
@@ -57,7 +124,7 @@ export default function FilePreview({ file }: FilePreviewProps) {
     return (
       <div className="flex h-full w-full items-center justify-center">
         <video
-          src={file.previewUrl}
+          src={previewSrc}
           controls
           onError={() => setFailed(true)}
           className="max-h-full max-w-full rounded-lg bg-black shadow-[0_1px_0_rgba(16,24,40,0.02),0_8px_20px_-8px_rgba(16,24,40,0.10)]"
@@ -69,7 +136,7 @@ export default function FilePreview({ file }: FilePreviewProps) {
   if (file.kind === "pdf") {
     return (
       <iframe
-        src={file.previewUrl}
+        src={previewSrc}
         title={file.name}
         className="h-full w-full border-0 bg-white"
       />
