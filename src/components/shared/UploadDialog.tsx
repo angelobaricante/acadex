@@ -68,7 +68,7 @@ export default function UploadDialog() {
     try {
       for (const file of files) {
         try {
-          const result = await uploadFile(file);
+          const result = await uploadFile(file, targetFolderId);
           if (targetFolderId) {
             try {
               await moveFileToFolder(result.id, targetFolderId);

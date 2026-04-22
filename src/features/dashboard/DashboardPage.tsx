@@ -251,6 +251,7 @@ export default function DashboardPage() {
   // All filtering/sorting below is client-side so tab switches are instant —
   // the API call only happens on user change, upload, delete, or folder move.
   useEffect(() => {
+    if (!user) return;
     let cancelled = false;
     listFiles({ ownerId }).then((result) => {
       if (cancelled) return;
@@ -259,7 +260,7 @@ export default function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [ownerId, uploadsVersion, foldersVersion]);
+  }, [user, ownerId, uploadsVersion, foldersVersion]);
 
   // Keep selection sets in sync with live data so deleted items don't leave stale FAB counts.
   useEffect(() => {

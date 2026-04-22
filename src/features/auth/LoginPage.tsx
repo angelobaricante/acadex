@@ -98,17 +98,26 @@ export default function LoginPage() {
   const roleIndex = ROLE_OPTIONS.findIndex((r) => r.value === role);
 
   async function handleSignIn() {
-    if (loading) return;
-    setLoading(true);
-    try {
-      const user = await mockSignIn(role);
-      setUser(user);
-      navigate("/", { replace: true });
-    } catch {
-      setLoading(false);
-    }
-  }
+  if (loading) return;
+  setLoading(true);
+  try {
+    const user = await mockSignIn(role);
+    setUser(user);
+    navigate("/", { replace: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Sign-in failed";
+    if (message === "popup_closed") return;
 
+    if (message.includes("Missing VITE_GOOGLE_CLIENT_ID")) {
+      alert("Google sign-in is not configured. Set VITE_GOOGLE_CLIENT_ID in your env.");
+      return;
+    }
+
+    alert(`Sign-in failed: ${message}`);
+  } finally {
+    setLoading(false); // ✅ moved here, stray `try` block removed
+  }
+}
   return (
     <div
       className="relative min-h-full overflow-hidden bg-[hsl(48_25%_98%)]"

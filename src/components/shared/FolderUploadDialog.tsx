@@ -72,7 +72,7 @@ export default function FolderUploadDialog() {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         try {
-          const result = await uploadFile(file);
+          const result = await uploadFile(file, targetFolderId);
           if (targetFolderId) {
             try {
               await moveFileToFolder(result.id, targetFolderId);
