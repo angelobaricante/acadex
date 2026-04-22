@@ -3,7 +3,7 @@ import type { FileRow } from "./types";
 
 interface CreateFileParams {
     driveFileId: string;
-    folderId: string;
+    folderId: string | null;
     name: string;
     mimeType: string;
     originalSizeBytes: number;

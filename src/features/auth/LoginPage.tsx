@@ -118,7 +118,6 @@ export default function LoginPage() {
     setLoading(false); // ✅ moved here, stray `try` block removed
   }
 }
-
   return (
     <div
       className="relative min-h-full overflow-hidden bg-[hsl(48_25%_98%)]"

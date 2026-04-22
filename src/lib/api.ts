@@ -12,6 +12,8 @@ import type {
 import { driveDelete, driveList, driveUpload } from "./driveApi";
 import { getAccessToken, signInWithGoogle, signOutFromGoogle } from "./googleAuth";
 import { compressFile } from "./compression/compressFile";
+import { createFileRecord } from "./supabase/fileService";
+import { supabase } from "./supabaseClient";
 import {
   mockFiles,
   mockFolders,
@@ -29,6 +31,42 @@ function sleep(): Promise<void> {
 
 function apiError(code: string, message: string): { code: string; message: string } {
   return { code, message };
+}
+
+function isUuid(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+const uploadedByFallbackByScope = new Map<string, string>();
+
+function getStableUploadedByFallback(scopeId?: string): string {
+  const scope = scopeId && scopeId.length > 0 ? scopeId : "anonymous";
+  const storageKey = `acadex_uploaded_by_uuid:${scope}`;
+
+  const inMemory = uploadedByFallbackByScope.get(scope);
+  if (inMemory && isUuid(inMemory)) return inMemory;
+
+  try {
+    const fromSession = sessionStorage.getItem(storageKey);
+    if (fromSession && isUuid(fromSession)) {
+      uploadedByFallbackByScope.set(scope, fromSession);
+      return fromSession;
+    }
+  } catch {
+    // Ignore storage access issues and fall back to in-memory UUID cache.
+  }
+
+  const generated = crypto.randomUUID();
+  uploadedByFallbackByScope.set(scope, generated);
+
+  try {
+    sessionStorage.setItem(storageKey, generated);
+  } catch {
+    // Ignore storage access issues and keep in-memory UUID cache.
+  }
+
+  return generated;
 }
 
 // --- In-memory state (resettable for tests) ---
@@ -149,7 +187,7 @@ export async function getFile(id: string): Promise<ArchivedFile> {
   return file;
 }
 
-export async function uploadFile(file: File): Promise<ArchivedFile> {
+export async function uploadFile(file: File, targetFolderId: string | null = null): Promise<ArchivedFile> {
   const compression = await compressFile(file);
   const archived = await driveUpload(compression.compressedFile);
 
@@ -163,7 +201,47 @@ export async function uploadFile(file: File): Promise<ArchivedFile> {
     originalBytes: compression.originalSize,
     storedBytes: compression.compressedSize,
     compressionRatio,
+    folderId: targetFolderId,
   };
+
+  const {
+    data: { user: supabaseUser },
+  } = await supabase.auth.getUser();
+  const uploadedBy = isUuid(supabaseUser?.id)
+    ? supabaseUser!.id
+    : isUuid(currentUser?.id)
+      ? currentUser!.id
+      : getStableUploadedByFallback(currentUser?.id);
+
+  const folderIdForSupabase = isUuid(targetFolderId) ? targetFolderId : null;
+
+  await createFileRecord({
+    driveFileId: archivedWithCompression.id,
+    folderId: folderIdForSupabase,
+    name: archivedWithCompression.name,
+    mimeType: archivedWithCompression.mimeType,
+    originalSizeBytes: archivedWithCompression.originalBytes,
+    compressedSizeBytes: archivedWithCompression.storedBytes,
+    uploadedBy,
+  });
+
+  if (import.meta.env.DEV) {
+    const nowIso = new Date().toISOString();
+    console.info("[acadex:supabase:files:metadata]", {
+      drive_file_id: archivedWithCompression.id,
+      folder_id: folderIdForSupabase,
+      name: archivedWithCompression.name,
+      mime_type: archivedWithCompression.mimeType,
+      original_size_bytes: archivedWithCompression.originalBytes,
+      compressed_size_bytes: archivedWithCompression.storedBytes,
+      compression_ratio: archivedWithCompression.compressionRatio,
+      tags: archivedWithCompression.tags ?? null,
+      uploaded_by: uploadedBy,
+      uploaded_at: nowIso,
+      drive_synced_at: nowIso,
+      is_deleted_on_drive: false,
+    });
+  }
 
   files = [archivedWithCompression, ...files.filter((f) => f.id !== archived.id)];
   return archivedWithCompression;

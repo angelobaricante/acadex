@@ -61,6 +61,27 @@ function buildResult(file: File, bytes: Uint8Array, originalSize: number): Rende
     };
 }
 
+function logCompressionDetails(
+    file: File,
+    strategy: "pdf" | "office" | "passthrough",
+    result: RendererCompressionResult,
+    fallbackToOriginal: boolean,
+    source: "web" | "electron-renderer"
+): void {
+    if (!import.meta.env.DEV) return;
+
+    console.info("[acadex:compression]", {
+        fileName: file.name,
+        mimeType: file.type,
+        strategy,
+        originalSize: result.originalSize,
+        compressedSize: result.compressedSize,
+        savedPercent: result.savedPercent,
+        fallbackToOriginal,
+        source,
+    });
+}
+
 export async function compressFile(file: File): Promise<RendererCompressionResult> {
     const originalSize = file.size;
     const originalBytes = new Uint8Array(await file.arrayBuffer());
@@ -73,24 +94,41 @@ export async function compressFile(file: File): Promise<RendererCompressionResul
         );
 
         const compressedBytes = new Uint8Array(result.compressedBytes);
-        return buildResult(file, compressedBytes, result.originalSize);
+        const output = buildResult(file, compressedBytes, result.originalSize);
+        logCompressionDetails(
+            file,
+            isPdf(file) ? "pdf" : isOffice(file) ? "office" : "passthrough",
+            output,
+            output.compressedSize >= output.originalSize,
+            "electron-renderer"
+        );
+        return output;
     }
 
     try {
         let compressedBytes = originalBytes;
+        let strategy: "pdf" | "office" | "passthrough" = "passthrough";
+        let fallbackToOriginal = false;
 
         if (isPdf(file)) {
             compressedBytes = await compressPdfInBrowser(originalBytes.buffer);
+            strategy = "pdf";
         } else if (isOffice(file)) {
             compressedBytes = compressOfficeInBrowser(originalBytes.buffer);
+            strategy = "office";
         }
 
         if (compressedBytes.byteLength > originalBytes.byteLength) {
             compressedBytes = originalBytes;
+            fallbackToOriginal = true;
         }
 
-        return buildResult(file, compressedBytes, originalSize);
+        const output = buildResult(file, compressedBytes, originalSize);
+        logCompressionDetails(file, strategy, output, fallbackToOriginal, "web");
+        return output;
     } catch {
-        return buildResult(file, originalBytes, originalSize);
+        const output = buildResult(file, originalBytes, originalSize);
+        logCompressionDetails(file, "passthrough", output, true, "web");
+        return output;
     }
 }
