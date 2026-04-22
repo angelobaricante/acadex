@@ -133,6 +133,7 @@ export default function DashboardPage() {
   const [confirmDeleteFolderOpen, setConfirmDeleteFolderOpen] = useState(false);
   const [confirmBulkDeleteOpen, setConfirmBulkDeleteOpen] = useState(false);
   const [foldersExpanded, setFoldersExpanded] = useState(false);
+  const [folderGridColumns, setFolderGridColumns] = useState(5);
 
   const totalSelected = selectedFileIds.size + selectedFolderIds.size;
   const activeFolder = folderTrail.length > 0 ? folderTrail[folderTrail.length - 1] : null;
@@ -157,6 +158,30 @@ export default function DashboardPage() {
       setCurrentFolderId(null);
     };
   }, [setCurrentFolderId]);
+
+  // Match folder grid breakpoints so "View more" always maps to 2 visible rows.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const updateFolderGridColumns = () => {
+      const width = window.innerWidth;
+      if (width >= 1280) {
+        setFolderGridColumns(5);
+      } else if (width >= 1024) {
+        setFolderGridColumns(4);
+      } else if (width >= 640) {
+        setFolderGridColumns(3);
+      } else {
+        setFolderGridColumns(2);
+      }
+    };
+
+    updateFolderGridColumns();
+    window.addEventListener("resize", updateFolderGridColumns);
+    return () => {
+      window.removeEventListener("resize", updateFolderGridColumns);
+    };
+  }, []);
 
   // Fetch folders list on mount / when they change.
   // When inside a folder, fetch subfolders; when at root, fetch root-level folders.
@@ -580,9 +605,8 @@ export default function DashboardPage() {
 
       {/* Folders grid */}
       {showFoldersStrip && (() => {
-        const COLS = 5;
         const MAX_VISIBLE_ROWS = 2;
-        const MAX_VISIBLE = COLS * MAX_VISIBLE_ROWS; // 10
+        const MAX_VISIBLE = folderGridColumns * MAX_VISIBLE_ROWS;
         const hasMore = folders!.length > MAX_VISIBLE;
         const visibleFolders = hasMore && !foldersExpanded
           ? folders!.slice(0, MAX_VISIBLE)
@@ -594,7 +618,7 @@ export default function DashboardPage() {
               Folders
             </span>
 
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {visibleFolders.map((folder) => (
                 <FolderTile
                   key={folder.id}
