@@ -79,3 +79,43 @@ export async function getFilesByFolder(folderId: string): Promise<FileRow[]> {
 
     return data as FileRow[];
 }
+
+export async function getFilesByDriveIds(driveFileIds: string[]): Promise<FileRow[]> {
+    if (driveFileIds.length === 0) {
+        return [];
+    }
+
+    const { data, error } = await supabase
+        .from("files")
+        .select("*")
+        .in("drive_file_id", driveFileIds)
+        .eq("is_deleted_on_drive", false);
+
+    if (error) {
+        throw error;
+    }
+
+    return data as FileRow[];
+}
+
+export async function deleteFileRecordByDriveId(driveFileId: string): Promise<void> {
+    const { error } = await supabase
+        .from("files")
+        .delete()
+        .eq("drive_file_id", driveFileId);
+
+    if (error) {
+        throw error;
+    }
+}
+
+export async function clearFolderFromFiles(folderId: string): Promise<void> {
+    const { error } = await supabase
+        .from("files")
+        .update({ folder_id: null })
+        .eq("folder_id", folderId);
+
+    if (error) {
+        throw error;
+    }
+}

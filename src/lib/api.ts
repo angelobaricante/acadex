@@ -13,8 +13,18 @@ import { driveDelete, driveList, driveUpload } from "./driveApi";
 import { createDriveFolder, uploadFileToDrive } from "./drive/driveApi";
 import { getAccessToken, signInWithGoogle, signOutFromGoogle } from "./googleAuth";
 import { compressFile } from "./compression/compressFile";
-import { createFileRecord } from "./supabase/fileService";
-import { createFolderRecord } from "./supabase/folderService";
+import {
+  clearFolderFromFiles,
+  createFileRecord,
+  deleteFileRecordByDriveId,
+  getFilesByDriveIds,
+} from "./supabase/fileService";
+import {
+  createFolderRecord,
+  deleteFolderRecordById,
+  getFolderById,
+  listFolderRecords,
+} from "./supabase/folderService";
 import { supabase } from "./supabaseClient";
 import {
   mockFiles,
@@ -146,19 +156,61 @@ export async function listFiles(params: ListFilesParams = {}): Promise<ArchivedF
   }
 
   if (loadedFromDrive) {
+    let supabaseByDriveId = new Map<string, {
+      folderId: string | null;
+      originalBytes: number | null;
+      storedBytes: number | null;
+      compressionRatio: number | null;
+      tags: string[] | null;
+      uploadedAt: string;
+      driveSyncedAt: string | null;
+    }>();
+
+    try {
+      const supabaseFiles = await getFilesByDriveIds(baseFiles.map((file) => file.id));
+      supabaseByDriveId = new Map(
+        supabaseFiles.map((row) => [
+          row.drive_file_id,
+          {
+            folderId: row.folder_id,
+            originalBytes: row.original_size_bytes,
+            storedBytes: row.compressed_size_bytes,
+            compressionRatio: row.compression_ratio,
+            tags: row.tags,
+            uploadedAt: row.uploaded_at,
+            driveSyncedAt: row.drive_synced_at,
+          },
+        ])
+      );
+    } catch {
+      // Keep Drive values if Supabase metadata lookup fails.
+    }
+
     const previousById = new Map(files.map((file) => [file.id, file]));
     baseFiles = baseFiles.map((driveFile) => {
       const previous = previousById.get(driveFile.id);
-      if (!previous) return driveFile;
+      const metadata = supabaseByDriveId.get(driveFile.id);
+
+      const originalBytes = metadata?.originalBytes ?? previous?.originalBytes ?? driveFile.originalBytes;
+      const storedBytes = metadata?.storedBytes ?? previous?.storedBytes ?? driveFile.storedBytes;
+      const computedCompressionRatio =
+        originalBytes > 0 ? (originalBytes - storedBytes) / originalBytes : driveFile.compressionRatio;
+      const compressionRatio = metadata?.compressionRatio ?? previous?.compressionRatio ?? computedCompressionRatio;
+      const tags = metadata?.tags ?? previous?.tags ?? driveFile.tags;
+      const folderId = metadata?.folderId ?? previous?.folderId;
+      const createdAt = metadata?.uploadedAt ?? previous?.createdAt ?? driveFile.createdAt;
+      const updatedAt = metadata?.driveSyncedAt ?? previous?.updatedAt ?? driveFile.updatedAt;
 
       return {
         ...driveFile,
-        ownerId: previous.ownerId,
-        originalBytes: previous.originalBytes,
-        storedBytes: previous.storedBytes,
-        compressionRatio: previous.compressionRatio,
-        tags: previous.tags,
-        folderId: previous.folderId,
+        ownerId: previous?.ownerId ?? driveFile.ownerId,
+        originalBytes,
+        storedBytes,
+        compressionRatio,
+        tags,
+        folderId,
+        createdAt,
+        updatedAt,
       };
     });
   }
@@ -458,6 +510,7 @@ export async function uploadFolder(
 
 export async function deleteFile(id: string): Promise<void> {
   await driveDelete(id);
+  await deleteFileRecordByDriveId(id);
   files = files.filter((f) => f.id !== id);
 }
 
@@ -501,6 +554,30 @@ export async function revokeShareLink(shareId: string): Promise<void> {
 // --- Folders ---
 export async function listFolders(parentFolderId?: string | null): Promise<Folder[]> {
   await sleep();
+  try {
+    const user = await getCurrentUser();
+    const {
+      data: { user: supabaseUser },
+    } = await supabase.auth.getUser();
+    const createdBy = isUuid(supabaseUser?.id)
+      ? supabaseUser!.id
+      : isUuid(user?.id)
+        ? user!.id
+        : getStableUploadedByFallback(user?.id);
+
+    const supabaseFolders = await listFolderRecords(createdBy);
+    folders = supabaseFolders.map((folder): Folder => ({
+      id: folder.id,
+      name: folder.name,
+      ownerId: folder.created_by,
+      color: "green",
+      createdAt: folder.created_at,
+      parentFolderId: folder.parent_folder_id,
+    }));
+  } catch {
+    // Fall back to in-memory folders when Supabase is unavailable.
+  }
+
   let result = [...folders];
   if (typeof parentFolderId === "string") {
     result = result.filter((f) => f.parentFolderId === parentFolderId);
@@ -526,16 +603,55 @@ export async function createFolder(
   if (parentFolderId !== null && parentFolderId !== undefined && !folders.find((f) => f.id === parentFolderId)) {
     throw apiError("not_found", `Parent folder ${parentFolderId} not found`);
   }
-  const folder: Folder = {
-    id: `folder_${Math.random().toString(36).slice(2, 10)}`,
-    name,
-    ownerId: currentUser?.id ?? "admin_reyes",
-    color: color ?? "green",
-    createdAt: new Date().toISOString(),
-    parentFolderId: parentFolderId ?? null,
-  };
-  folders = [folder, ...folders];
-  return folder;
+
+  try {
+    const {
+      data: { user: supabaseUser },
+    } = await supabase.auth.getUser();
+
+    const createdBy = isUuid(supabaseUser?.id)
+      ? supabaseUser!.id
+      : isUuid(currentUser?.id)
+        ? currentUser!.id
+        : getStableUploadedByFallback(currentUser?.id);
+
+    let parentDriveFolderId = "root";
+    if (parentFolderId) {
+      const parentFolder = await getFolderById(parentFolderId);
+      parentDriveFolderId = parentFolder.drive_folder_id;
+    }
+
+    const driveFolder = await createDriveFolder(name, parentDriveFolderId, createdBy);
+    const createdFolder = await createFolderRecord({
+      driveFolderId: driveFolder.id,
+      name,
+      parentFolderId: parentFolderId ?? null,
+      createdBy,
+    });
+
+    const folder: Folder = {
+      id: createdFolder.id,
+      name: createdFolder.name,
+      ownerId: createdFolder.created_by,
+      color: color ?? "green",
+      createdAt: createdFolder.created_at,
+      parentFolderId: createdFolder.parent_folder_id,
+    };
+
+    folders = [folder, ...folders.filter((existing) => existing.id !== folder.id)];
+    return folder;
+  } catch {
+    const folder: Folder = {
+      id: `folder_${Math.random().toString(36).slice(2, 10)}`,
+      name,
+      ownerId: currentUser?.id ?? "admin_reyes",
+      color: color ?? "green",
+      createdAt: new Date().toISOString(),
+      parentFolderId: parentFolderId ?? null,
+    };
+    folders = [folder, ...folders];
+    return folder;
+  }
 }
 
 export async function moveFileToFolder(
@@ -560,6 +676,8 @@ export async function deleteFolder(id: string): Promise<void> {
   for (const file of files) {
     if (file.folderId === id) file.folderId = null;
   }
+  await clearFolderFromFiles(id);
+  await deleteFolderRecordById(id);
 }
 
 // --- Impact ---

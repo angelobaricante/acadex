@@ -60,6 +60,8 @@ type KindFilter = "all" | "folder" | FileKind;
 type SortKey = "recent" | "largest" | "most_saved";
 export type ViewMode = "grid" | "list";
 
+const DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
+
 const KIND_OPTIONS: SelectOption<KindFilter>[] = [
   { value: "all", label: "All types", icon: FileIcon },
   { value: "folder", label: "Folders", icon: FolderOpen },
@@ -322,7 +324,7 @@ export default function DashboardPage() {
   // Derive the displayed list via memo — no network calls on filter changes.
   const files = useMemo<ArchivedFile[] | null>(() => {
     if (allFiles === null) return null;
-    let result = allFiles;
+    let result = allFiles.filter((f) => f.mimeType !== DRIVE_FOLDER_MIME_TYPE);
     if (activeFolder) {
       result = result.filter((f) => f.folderId === activeFolder.id);
     }
