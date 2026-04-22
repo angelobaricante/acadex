@@ -74,7 +74,7 @@ export default function FolderTile({
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       className={cn(
-        "group/folder-tile flex h-[60px] w-[220px] shrink-0 items-center gap-2.5 rounded-xl border bg-card pl-2.5 pr-1.5 text-left",
+        "group/folder-tile flex h-[60px] w-full items-center gap-2.5 rounded-xl border bg-card pl-2.5 pr-1.5 text-left",
         "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
         "transition-colors duration-200 ease-out",
         selected ? "border-primary/40 bg-primary/[0.03]" : "border-border/70 hover:border-primary/30",

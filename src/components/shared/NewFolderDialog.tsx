@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Check, Folder as FolderIcon, Loader2 } from "lucide-react";
+import { Check, ChevronDown, Folder as FolderIcon, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,8 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
-import { createFolder } from "@/lib/api";
-import type { FolderColor } from "@/lib/types";
+import { createFolder, listFolders } from "@/lib/api";
+import type { Folder, FolderColor } from "@/lib/types";
 import { toast } from "sonner";
 
 const COLOR_OPTIONS: Array<{ value: FolderColor; label: string; dot: string }> = [
@@ -36,10 +36,25 @@ export default function NewFolderDialog() {
   const open = useUIStore((s) => s.newFolderDialogOpen);
   const closeNewFolder = useUIStore((s) => s.closeNewFolder);
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
+  const currentFolderId = useUIStore((s) => s.currentFolderId);
 
   const [name, setName] = useState("");
   const [color, setColor] = useState<FolderColor>("green");
   const [submitting, setSubmitting] = useState(false);
+  const [folders, setFolders] = useState<Folder[]>([]);
+
+  // Load folders so we can look up the current folder's name.
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    listFolders().then((result) => {
+      if (cancelled) return;
+      setFolders(result);
+    });
+    return () => { cancelled = true; };
+  }, [open]);
+
+  const contextFolder = folders.find((f) => f.id === currentFolderId) ?? null;
 
   useEffect(() => {
     if (!open) {
@@ -134,6 +149,26 @@ export default function NewFolderDialog() {
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
+          {/* Create inside context row */}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              Create inside
+            </span>
+            <div className="flex h-8 w-full items-center gap-2 rounded-lg border border-border/80 bg-muted/30 px-2.5">
+              <FolderIcon
+                className="size-[14px] shrink-0 text-muted-foreground"
+                strokeWidth={1.8}
+              />
+              <span className="flex-1 truncate text-[12.5px] text-foreground">
+                {contextFolder ? contextFolder.name : "All files"}
+              </span>
+              <ChevronDown
+                className="size-[14px] shrink-0 text-muted-foreground/40"
+                strokeWidth={1.8}
+              />
+            </div>
+          </div>
+
           <div className="flex flex-col gap-1.5">
             <Label
               htmlFor="new-folder-name"
