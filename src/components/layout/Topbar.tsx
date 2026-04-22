@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, LogOut, Search, Upload, X } from "lucide-react";
+import { Check, LogOut, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useSessionStore, useUIStore } from "@/lib/store";
+import { useSessionStore } from "@/lib/store";
 import { mockSignIn, signOut } from "@/lib/api";
 import type { Role } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -44,7 +44,6 @@ export default function Topbar() {
   const navigate = useNavigate();
   const user = useSessionStore((s) => s.user);
   const setUser = useSessionStore((s) => s.setUser);
-  const openUpload = useUIStore((s) => s.openUpload);
   const { search, setSearch } = useShellSearch();
   const [isFocused, setIsFocused] = useState(false);
 
@@ -127,16 +126,6 @@ export default function Topbar() {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          onClick={openUpload}
-          className="h-9 gap-1.5 rounded-lg border-transparent bg-[#2d8a56] px-3 text-[13px] font-medium text-white hover:bg-[#247045]"
-        >
-          <Upload className="size-[15px]" />
-          <span>Upload</span>
-        </Button>
-
         {user && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

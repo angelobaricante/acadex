@@ -14,6 +14,7 @@ import {
   FileText,
   FileVideo,
   FolderOpen,
+  FolderUp,
   HardDrive,
   LayoutGrid,
   List,
@@ -106,6 +107,7 @@ export default function DashboardPage() {
   const user = useSessionStore((s) => s.user);
   const openUpload = useUIStore((s) => s.openUpload);
   const openNewFolder = useUIStore((s) => s.openNewFolder);
+  const openFolderUpload = useUIStore((s) => s.openFolderUpload);
   const uploadsVersion = useUIStore((s) => s.uploadsVersion);
   const foldersVersion = useUIStore((s) => s.foldersVersion);
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
@@ -459,16 +461,43 @@ export default function DashboardPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={openNewFolder}
-            className="h-8 gap-1.5 rounded-lg px-2.5 text-[12.5px] text-muted-foreground hover:text-foreground"
-          >
-            <Plus className="size-[14px]" strokeWidth={1.8} />
-            <span>New folder</span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="sm"
+                className="h-8 gap-1.5 rounded-lg border-transparent bg-[#2d8a56] px-3 text-[13px] font-medium text-white hover:bg-[#247045]"
+              >
+                <Plus className="size-[14px]" strokeWidth={2.5} />
+                <span>New Upload</span>
+                <ChevronDown className="size-[13px] opacity-80" strokeWidth={2} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52 p-1">
+              <DropdownMenuItem
+                onSelect={openNewFolder}
+                className="gap-2.5 px-2.5 py-2 text-[13px]"
+              >
+                <FolderOpen className="size-[15px] text-muted-foreground" strokeWidth={1.8} />
+                <span>New Folder</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onSelect={openUpload}
+                className="gap-2.5 px-2.5 py-2 text-[13px]"
+              >
+                <Upload className="size-[15px] text-muted-foreground" strokeWidth={1.8} />
+                <span>File Upload</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={openFolderUpload}
+                className="gap-2.5 px-2.5 py-2 text-[13px]"
+              >
+                <FolderUp className="size-[15px] text-muted-foreground" strokeWidth={1.8} />
+                <span>Folder Upload</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
