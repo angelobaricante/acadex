@@ -223,7 +223,7 @@ export default function PdfPreviewModal({
               {file.name}
             </p>
 
-            <div className="pointer-events-auto flex shrink-0 items-center gap-1 rounded-full border bg-background/95 p-1 shadow-lg backdrop-blur">
+            <div className="pointer-events-auto flex shrink-0 items-center gap-1">
               <Button
                 type="button"
                 size="sm"
@@ -240,7 +240,7 @@ export default function PdfPreviewModal({
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    className="rounded-full"
+                    className="rounded-full text-white hover:bg-white/15 hover:text-white"
                     aria-label="More actions"
                   >
                     <MoreHorizontal className="size-4" strokeWidth={1.9} />
@@ -277,7 +277,7 @@ export default function PdfPreviewModal({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                className="rounded-full"
+                className="rounded-full text-white hover:bg-white/15 hover:text-white"
                 onClick={() => onOpenChange(false)}
                 aria-label="Close preview"
               >
