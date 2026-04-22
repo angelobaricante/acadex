@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { LogOut, Search, X } from "lucide-react";
+import { Check, LogOut, Search, Type as TypeIcon, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useSessionStore } from "@/lib/store";
 import { signOut } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { Role } from "@/lib/types";
 import { useShellSearch } from "./AppShell";
 
@@ -41,12 +42,82 @@ function roleLabel(role: Role): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
+type FontScale = "default" | "large" | "xl";
+const FONT_SCALE_KEY = "acadex_font_scale";
+const FONT_SCALE_CLASSES: Record<FontScale, string> = {
+  default: "",
+  large: "text-scale-large",
+  xl: "text-scale-xl",
+};
+const FONT_SCALE_LABELS: Record<FontScale, string> = {
+  default: "Default",
+  large: "Large",
+  xl: "Extra large",
+};
+
+function loadFontScale(): FontScale {
+  if (typeof window === "undefined") return "default";
+  const saved = localStorage.getItem(FONT_SCALE_KEY);
+  if (saved === "large" || saved === "xl") return saved;
+  return "default";
+}
+
+function applyFontScale(scale: FontScale) {
+  if (typeof document === "undefined") return;
+  const html = document.documentElement;
+  html.classList.remove("text-scale-large", "text-scale-xl");
+  if (FONT_SCALE_CLASSES[scale]) {
+    html.classList.add(FONT_SCALE_CLASSES[scale]);
+  }
+}
+
+function isAppleDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Mac|iPhone|iPod|iPad/i.test(navigator.platform) ||
+    /Mac|iPhone|iPod|iPad/i.test(navigator.userAgent);
+}
+
 export default function Topbar() {
   const navigate = useNavigate();
   const user = useSessionStore((s) => s.user);
   const setUser = useSessionStore((s) => s.setUser);
   const { search, setSearch } = useShellSearch();
   const [isFocused, setIsFocused] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [fontScale, setFontScale] = useState<FontScale>(() => loadFontScale());
+  const [isApple] = useState(() => isAppleDevice());
+
+  useEffect(() => {
+    applyFontScale(fontScale);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(FONT_SCALE_KEY, fontScale);
+    }
+  }, [fontScale]);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable);
+      // Mac: Cmd+K — Windows/Linux: Ctrl+Shift+K
+      const matches = isApple
+        ? e.key.toLowerCase() === "k" && e.metaKey && !e.ctrlKey && !e.altKey
+        : e.key.toLowerCase() === "k" && e.ctrlKey && e.shiftKey && !e.altKey;
+      if (matches && !isTyping) {
+        e.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      }
+      if (e.key === "Escape" && document.activeElement === searchRef.current) {
+        searchRef.current?.blur();
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [isApple]);
 
   const showSuggestions = isFocused && !search;
   const suggestedTags = ["CS101", "Admin", "Project", "Thesis", "Textbook", "Lab", "Exam"];
@@ -75,13 +146,17 @@ export default function Topbar() {
           className="pointer-events-none absolute left-2.5 top-1/2 size-[15px] -translate-y-1/2 text-muted-foreground/70"
         />
         <Input
+          ref={searchRef}
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setTimeout(() => setIsFocused(false), 200)}
           placeholder="Search files and tags…"
-          className="h-9 rounded-lg border-border/80 bg-[hsl(48_25%_98%)] pl-8 pr-20 text-[13px] shadow-[inset_0_1px_0_rgba(16,24,40,0.02)] transition-colors focus-visible:bg-white [&::-webkit-search-cancel-button]:hidden"
+          className={cn(
+            "h-9 rounded-lg border-border/80 bg-[hsl(48_25%_98%)] pl-8 text-[13px] shadow-[inset_0_1px_0_rgba(16,24,40,0.02)] transition-colors focus-visible:bg-white [&::-webkit-search-cancel-button]:hidden",
+            isApple ? "pr-20" : "pr-[108px]"
+          )}
         />
         {search && (
           <button
@@ -99,8 +174,14 @@ export default function Topbar() {
           aria-hidden="true"
           className="pointer-events-none absolute right-2 top-1/2 hidden h-5 -translate-y-1/2 select-none items-center gap-0.5 rounded border border-border/80 bg-white px-1.5 font-sans text-[10.5px] font-medium text-muted-foreground sm:inline-flex"
         >
-          <span className="text-[11px] leading-none">⌘</span>
-          <span className="leading-none">K</span>
+          {isApple ? (
+            <>
+              <span className="text-[11px] leading-none">⌘</span>
+              <span className="leading-none">K</span>
+            </>
+          ) : (
+            <span className="leading-none">Ctrl+Shift+K</span>
+          )}
         </kbd>
 
         {showSuggestions && (
@@ -161,37 +242,42 @@ export default function Topbar() {
                 </div>
               </div>
               <DropdownMenuSeparator />
-              {/*
-              <div className="px-2 pb-1 pt-1.5">
-                <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                  Switch demo role
-                </span>
+              <div className="flex items-center gap-2 px-2 py-1.5 text-[13px]">
+                <TypeIcon className="size-[14px] text-muted-foreground" strokeWidth={1.8} />
+                <span className="flex-1 text-foreground">Text size</span>
               </div>
-              {ROLES.map(({ value, label }) => {
-                const active = user.role === value;
+              {(["default", "large", "xl"] as const).map((scale) => {
+                const active = fontScale === scale;
                 return (
                   <DropdownMenuItem
-                    key={value}
-                    onSelect={() => handleSwitchRole(value)}
+                    key={scale}
+                    onSelect={(e) => {
+                      e.preventDefault();
+                      setFontScale(scale);
+                    }}
                     className={cn(
-                      "cursor-pointer gap-2 px-2 py-1.5 text-[13px]",
+                      "cursor-pointer gap-2 pl-8 pr-2 py-1.5 text-[13px]",
                       active && "font-medium text-primary"
                     )}
                   >
-                    <span className="flex-1">{label}</span>
-                    {active && (
-                      <Check className="size-[14px] text-primary" />
-                    )}
+                    <span
+                      className="flex-1"
+                      style={{
+                        fontSize: scale === "default" ? "13px" : scale === "large" ? "14.5px" : "16px",
+                      }}
+                    >
+                      {FONT_SCALE_LABELS[scale]}
+                    </span>
+                    {active && <Check className="size-[14px] text-primary" strokeWidth={2} />}
                   </DropdownMenuItem>
                 );
               })}
               <DropdownMenuSeparator />
-              */}
               <DropdownMenuItem
                 onSelect={handleSignOut}
                 className="cursor-pointer gap-2 px-2 py-1.5 text-[13px]"
               >
-                <LogOut className="size-[14px] text-muted-foreground" />
+                <LogOut className="size-[14px] text-muted-foreground" strokeWidth={1.8} />
                 <span>Sign out</span>
               </DropdownMenuItem>
             </DropdownMenuContent>

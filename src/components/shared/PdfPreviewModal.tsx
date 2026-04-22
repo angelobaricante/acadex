@@ -1,8 +1,14 @@
 import { Suspense, lazy, useEffect, useState } from "react";
-import { Download, FileText, Info, MoreHorizontal, Share2, Trash2, X } from "lucide-react";
+import { ArrowLeft, Download, FileIcon, FileImage, FileText, FileVideo, Info, MoreHorizontal, Presentation, Share2, Trash2, X, type LucideIcon } from "lucide-react";
+import type { FileKind } from "@/lib/types";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import SavingsBadge from "@/components/shared/SavingsBadge";
 import FilePreviewLoader from "@/components/shared/FilePreviewLoader";
+import { formatBytes, formatDate } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -12,6 +18,23 @@ import {
 } from "@/components/ui/dropdown-menu";
 import ConfirmDialog from "@/components/shared/ConfirmDialog";
 import type { ArchivedFile } from "@/lib/types";
+
+function fileTypeConfig(kind: FileKind): { Icon: LucideIcon; color: string; bg: string } {
+  switch (kind) {
+    case "pdf":
+      return { Icon: FileText, color: "text-red-500", bg: "bg-red-50/80" };
+    case "docx":
+      return { Icon: FileText, color: "text-blue-500", bg: "bg-blue-50/80" };
+    case "pptx":
+      return { Icon: Presentation, color: "text-orange-500", bg: "bg-orange-50/80" };
+    case "image":
+      return { Icon: FileImage, color: "text-emerald-500", bg: "bg-emerald-50/80" };
+    case "video":
+      return { Icon: FileVideo, color: "text-purple-500", bg: "bg-purple-50/80" };
+    default:
+      return { Icon: FileIcon, color: "text-slate-500", bg: "bg-slate-50/80" };
+  }
+}
 import { fetchDocumentBlob, isDocumentGatewayEnabled } from "@/lib/documentGateway";
 
 const LazyReactPdfViewer = lazy(() => import("@/components/shared/ReactPdfViewer"));
@@ -126,7 +149,6 @@ interface PdfPreviewModalProps {
   file: ArchivedFile | null;
   onOpenChange: (open: boolean) => void;
   onShare?: (file: ArchivedFile) => void;
-  onDetails?: (file: ArchivedFile) => void;
   onDelete?: (file: ArchivedFile) => Promise<void> | void;
 }
 
@@ -135,12 +157,16 @@ export default function PdfPreviewModal({
   file,
   onOpenChange,
   onShare,
-  onDetails,
   onDelete,
 }: PdfPreviewModalProps) {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [blobError, setBlobError] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) setDetailsOpen(false);
+  }, [open]);
 
   const fileId = file?.id ?? null;
   const gatewayEnabled = isDocumentGatewayEnabled();
@@ -179,6 +205,13 @@ export default function PdfPreviewModal({
   const currentFile = file;
 
   const viewerUrl = blobUrl ?? (!gatewayEnabled ? currentFile.previewUrl : "");
+  const fileNameWithoutExt = currentFile.name.includes(".")
+    ? currentFile.name.replace(/\.[^/.]+$/, "")
+    : currentFile.name;
+  const extension = currentFile.name.includes(".")
+    ? currentFile.name.split(".").pop()?.toUpperCase()
+    : "";
+  const fileConfig = fileTypeConfig(currentFile.kind);
 
   function handleShare() {
     if (onShare) {
@@ -189,11 +222,7 @@ export default function PdfPreviewModal({
   }
 
   function handleDetails() {
-    if (onDetails) {
-      onDetails(currentFile);
-      return;
-    }
-    window.open(currentFile.previewUrl, "_blank", "noopener,noreferrer");
+    setDetailsOpen(true);
   }
 
   async function handleDelete() {
@@ -306,6 +335,128 @@ export default function PdfPreviewModal({
               })}
             </Suspense>
           </div>
+
+          {/* Details side panel */}
+          {detailsOpen && (
+            <aside
+              role="complementary"
+              aria-label="File details"
+              className={cn(
+                "absolute right-0 top-0 bottom-0 z-40 flex w-full max-w-[380px] flex-col overflow-hidden bg-white",
+                "shadow-[-16px_0_40px_-20px_rgba(0,0,0,0.35)] ring-1 ring-black/5",
+                "animate-in slide-in-from-right-4 fade-in duration-200"
+              )}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-border/70 px-4 py-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="-ml-2 gap-1.5 text-muted-foreground"
+                  onClick={() => setDetailsOpen(false)}
+                >
+                  <ArrowLeft className="size-3.5" strokeWidth={2} />
+                  Back
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-full text-muted-foreground"
+                  onClick={() => setDetailsOpen(false)}
+                  aria-label="Close details"
+                >
+                  <X className="size-4" strokeWidth={1.9} />
+                </Button>
+              </div>
+
+              <div className="flex flex-1 flex-col gap-5 overflow-y-auto p-5">
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-start gap-2">
+                    <h2 className="flex-1 text-[17px] font-semibold leading-snug tracking-tight text-foreground break-all">
+                      {fileNameWithoutExt}
+                    </h2>
+                    {extension && (
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "mt-0.5 shrink-0 rounded-full px-1.5 text-[10px] font-bold uppercase tracking-wider border-transparent mix-blend-multiply",
+                          fileConfig.bg,
+                          fileConfig.color
+                        )}
+                      >
+                        {extension}
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="text-[12px] text-muted-foreground tabular-nums">
+                    Added {formatDate(currentFile.createdAt)}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" onClick={handleShare} className="rounded-lg">
+                    <Share2 className="size-3.5" strokeWidth={1.9} />
+                    Share
+                  </Button>
+                  <Button asChild size="sm" variant="outline" className="rounded-lg">
+                    <a href={currentFile.downloadUrl} download={currentFile.name}>
+                      <Download className="size-3.5" strokeWidth={1.9} />
+                      Download
+                    </a>
+                  </Button>
+                </div>
+
+                <Separator />
+
+                <dl className="flex flex-col gap-2.5 text-[12.5px]">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">Original size</dt>
+                    <dd className="font-medium tabular-nums">{formatBytes(currentFile.originalBytes)}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">Stored size</dt>
+                    <dd className="font-medium tabular-nums">{formatBytes(currentFile.storedBytes)}</dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">Savings</dt>
+                    <dd>
+                      <SavingsBadge ratio={currentFile.compressionRatio} />
+                    </dd>
+                  </div>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <dt className="text-muted-foreground">Type</dt>
+                    <dd className="font-medium uppercase tracking-wide tabular-nums">
+                      {currentFile.kind}
+                    </dd>
+                  </div>
+                </dl>
+
+                <Separator />
+
+                <div className="flex flex-col gap-2">
+                  <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                    Tags
+                  </span>
+                  {currentFile.tags.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {currentFile.tags.map((tag) => (
+                        <Badge
+                          key={tag}
+                          variant="secondary"
+                          className="h-5 rounded-full px-1.5 text-[11px] font-normal tracking-tight text-muted-foreground"
+                        >
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[12px] text-muted-foreground/80">No tags</p>
+                  )}
+                </div>
+
+              </div>
+            </aside>
+          )}
         </div>
       </DialogContent>
     </Dialog>

@@ -38,6 +38,10 @@
     line-height: 1.5;
   }
 
+  /* Accessibility: user-selectable font scale applied to <html>. */
+  html.text-scale-large body { font-size: 15.75px; }
+  html.text-scale-xl body    { font-size: 17.5px;  }
+
   * {
     @apply border-border;
   }
@@ -191,7 +195,7 @@
 /* ─── Custom scrollbar for the preview viewer ────────────────────────── */
 .pdf-preview-scroll {
   scrollbar-width: thin;
-  scrollbar-color: hsl(142 60% 65% / 0.35) transparent;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
   scrollbar-gutter: stable;
 }
 
@@ -206,7 +210,7 @@
 }
 
 .pdf-preview-scroll::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, hsl(142 75% 68% / 0.35), hsl(142 60% 55% / 0.55));
+  background: rgba(255, 255, 255, 0.22);
   border-radius: 999px;
   border: 2px solid transparent;
   background-clip: padding-box;
@@ -214,7 +218,7 @@
 }
 
 .pdf-preview-scroll::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, hsl(142 80% 72% / 0.7), hsl(142 65% 58% / 0.9));
+  background: rgba(255, 255, 255, 0.4);
   background-clip: padding-box;
 }
 

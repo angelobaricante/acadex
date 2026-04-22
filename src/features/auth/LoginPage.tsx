@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Info } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { mockSignIn } from "@/lib/api";
 import { useSessionStore } from "@/lib/store";
@@ -240,14 +240,6 @@ export default function LoginPage() {
                 );
               })}
             </div>
-          </div>
-
-          <div className="mt-5 flex gap-2.5 rounded-lg border border-amber-200/70 bg-amber-50/50 px-3 py-2.5">
-            <Info className="mt-px size-3.5 shrink-0 text-amber-500/90" strokeWidth={1.8} />
-            <p className="text-[11.5px] leading-relaxed text-amber-900/60">
-              Demo mode. Google sign-in is simulated — the role above picks
-              which fake user you sign in as.
-            </p>
           </div>
         </div>
 

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
+  ArrowDownAZ,
+  ArrowDownZA,
   ArrowUpDown,
   ChevronDown,
   ChevronRight,
@@ -57,7 +59,7 @@ import { toast } from "sonner";
 
 import type { SelectOption } from "@/components/shared/SelectMenu";
 type KindFilter = "all" | "folder" | FileKind;
-type SortKey = "recent" | "largest" | "most_saved";
+type SortKey = "recent" | "largest" | "most_saved" | "name_asc" | "name_desc";
 export type ViewMode = "grid" | "list";
 
 const DRIVE_FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
@@ -75,6 +77,8 @@ const KIND_OPTIONS: SelectOption<KindFilter>[] = [
 
 const SORT_OPTIONS: SelectOption<SortKey>[] = [
   { value: "recent", label: "Most recent", icon: Clock },
+  { value: "name_asc", label: "Name (A–Z)", icon: ArrowDownAZ },
+  { value: "name_desc", label: "Name (Z–A)", icon: ArrowDownZA },
   { value: "largest", label: "Largest original", icon: HardDrive },
   { value: "most_saved", label: "Most saved", icon: TrendingDown },
 ];
@@ -88,6 +92,18 @@ const SORT_OPTIONS: SelectOption<SortKey>[] = [
 
 
 
+
+// Module-level cache so navigating away and back to the dashboard keeps data
+// visible instantly instead of flashing skeletons while refetching.
+const dashboardCache: {
+  ownerId: string | undefined;
+  allFiles: ArchivedFile[] | null;
+  allFolders: Folder[] | null;
+} = {
+  ownerId: undefined,
+  allFiles: null,
+  allFolders: null,
+};
 
 const ROLE_HEADINGS = {
   student: {
@@ -140,9 +156,11 @@ export default function DashboardPage() {
   const [kind, setKind] = useState<KindFilter>("all");
   const [sort, setSort] = useState<SortKey>("recent");
   const [view, setView] = useState<ViewMode>("grid");
+  const ownerIdForInit = user?.role === "student" ? user.id : undefined;
+  const cacheValid = dashboardCache.ownerId === ownerIdForInit;
   const [folders, setFolders] = useState<Folder[] | null>(null);
-  const [allFolders, setAllFolders] = useState<Folder[] | null>(null);
-  const [allFiles, setAllFiles] = useState<ArchivedFile[] | null>(null);
+  const [allFolders, setAllFolders] = useState<Folder[] | null>(cacheValid ? dashboardCache.allFolders : null);
+  const [allFiles, setAllFiles] = useState<ArchivedFile[] | null>(cacheValid ? dashboardCache.allFiles : null);
   const [folderTrail, setFolderTrail] = useState<Folder[]>([]);
   const [displayLimit, setDisplayLimit] = useState(16);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -243,6 +261,7 @@ export default function DashboardPage() {
     listFolders().then((result) => {
       if (cancelled) return;
       setAllFolders(result);
+      dashboardCache.allFolders = result;
     });
     return () => {
       cancelled = true;
@@ -258,6 +277,8 @@ export default function DashboardPage() {
     listFiles({ ownerId }).then((result) => {
       if (cancelled) return;
       setAllFiles(result);
+      dashboardCache.ownerId = ownerId;
+      dashboardCache.allFiles = result;
     });
     return () => {
       cancelled = true;
@@ -342,6 +363,10 @@ export default function DashboardPage() {
     const sorted = [...result];
     if (sort === "recent") {
       sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } else if (sort === "name_asc") {
+      sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }));
+    } else if (sort === "name_desc") {
+      sorted.sort((a, b) => b.name.localeCompare(a.name, undefined, { sensitivity: "base", numeric: true }));
     } else if (sort === "largest") {
       sorted.sort((a, b) => b.originalBytes - a.originalBytes);
     } else {
@@ -462,6 +487,10 @@ export default function DashboardPage() {
     const sorted = [...result];
     if (sort === "recent") {
       sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } else if (sort === "name_asc") {
+      sorted.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base", numeric: true }));
+    } else if (sort === "name_desc") {
+      sorted.sort((a, b) => b.name.localeCompare(a.name, undefined, { sensitivity: "base", numeric: true }));
     } else if (sort === "largest") {
       sorted.sort(
         (a, b) =>
@@ -563,42 +592,62 @@ export default function DashboardPage() {
     [isLoadingMore, displayLimit, files]
   );
 
-  function toggleSelection(id: string, checked: boolean, shiftKey = false) {
-    setSelectedFolderIds(new Set());
-    setFolderSelectionAnchorId(null);
+  function toggleSelection(id: string, checked: boolean, mode: "replace" | "range" | "toggle" = "replace") {
+    if (mode !== "toggle") {
+      setSelectedFolderIds(new Set());
+      setFolderSelectionAnchorId(null);
+    }
 
     const fileIds = files?.map((file) => file.id) ?? [];
-    const nextRange = shiftKey && fileSelectionAnchorId
-      ? buildRangeSelection(fileIds, fileSelectionAnchorId, id)
-      : null;
 
-    setSelectedFileIds(() => {
-      if (nextRange) return nextRange;
-      return checked ? new Set([id]) : new Set();
-    });
-
-    if (!shiftKey || !nextRange) {
-      setFileSelectionAnchorId(checked ? id : null);
+    if (mode === "range" && fileSelectionAnchorId) {
+      const range = buildRangeSelection(fileIds, fileSelectionAnchorId, id);
+      setSelectedFileIds(range);
+      return;
     }
+
+    if (mode === "toggle") {
+      setSelectedFileIds((prev) => {
+        const next = new Set(prev);
+        if (checked) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+      setFileSelectionAnchorId(checked ? id : null);
+      return;
+    }
+
+    setSelectedFileIds(checked ? new Set([id]) : new Set());
+    setFileSelectionAnchorId(checked ? id : null);
   }
 
-  function toggleFolderSelection(id: string, checked: boolean, shiftKey = false) {
-    setSelectedFileIds(new Set());
-    setFileSelectionAnchorId(null);
+  function toggleFolderSelection(id: string, checked: boolean, mode: "replace" | "range" | "toggle" = "replace") {
+    if (mode !== "toggle") {
+      setSelectedFileIds(new Set());
+      setFileSelectionAnchorId(null);
+    }
 
     const folderIds = displayedFolders?.map((folder) => folder.id) ?? [];
-    const nextRange = shiftKey && folderSelectionAnchorId
-      ? buildRangeSelection(folderIds, folderSelectionAnchorId, id)
-      : null;
 
-    setSelectedFolderIds(() => {
-      if (nextRange) return nextRange;
-      return checked ? new Set([id]) : new Set();
-    });
-
-    if (!shiftKey || !nextRange) {
-      setFolderSelectionAnchorId(checked ? id : null);
+    if (mode === "range" && folderSelectionAnchorId) {
+      const range = buildRangeSelection(folderIds, folderSelectionAnchorId, id);
+      setSelectedFolderIds(range);
+      return;
     }
+
+    if (mode === "toggle") {
+      setSelectedFolderIds((prev) => {
+        const next = new Set(prev);
+        if (checked) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+      setFolderSelectionAnchorId(checked ? id : null);
+      return;
+    }
+
+    setSelectedFolderIds(checked ? new Set([id]) : new Set());
+    setFolderSelectionAnchorId(checked ? id : null);
   }
 
   function clearSelection() {
@@ -615,11 +664,6 @@ export default function DashboardPage() {
 
   function handlePdfPreviewShare(file: ArchivedFile) {
     openShare(file.id);
-  }
-
-  function handlePdfPreviewDetails(file: ArchivedFile) {
-    setSelectedPdfFile(null);
-    navigate(`/file/${file.id}`, { state: { folderTrail: normalizedFolderTrail } });
   }
 
   async function handlePdfPreviewDelete(file: ArchivedFile) {
@@ -660,11 +704,108 @@ export default function DashboardPage() {
 
   const displayedFiles = files?.slice(0, displayLimit) ?? null;
 
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [marqueeRect, setMarqueeRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const marqueeDragRef = useRef(false);
+
+  function handleRootMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.button !== 0 || !rootRef.current) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-select-id]")) return;
+    if (target.closest("button, a, input, textarea, label, [role='menuitem'], [role='menu'], [data-radix-popper-content-wrapper], [data-slot='dropdown-menu-content'], [data-slot='dialog-content']")) return;
+
+    const root = rootRef.current;
+    const rootRect = root.getBoundingClientRect();
+    const startX = e.clientX - rootRect.left;
+    const startY = e.clientY - rootRect.top;
+
+    const initialFiles = new Set(selectedFileIds);
+    const initialFolders = new Set(selectedFolderIds);
+    const additive = e.metaKey || e.ctrlKey || e.shiftKey;
+    let dragging = false;
+
+    const handleMove = (ev: MouseEvent) => {
+      const rect = root.getBoundingClientRect();
+      const curX = ev.clientX - rect.left;
+      const curY = ev.clientY - rect.top;
+      const dx = curX - startX;
+      const dy = curY - startY;
+      if (!dragging && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      dragging = true;
+      marqueeDragRef.current = true;
+
+      const x = Math.min(startX, curX);
+      const y = Math.min(startY, curY);
+      const w = Math.abs(dx);
+      const h = Math.abs(dy);
+      setMarqueeRect({ x, y, w, h });
+
+      const selLeft = rect.left + x;
+      const selTop = rect.top + y;
+      const selRight = selLeft + w;
+      const selBottom = selTop + h;
+
+      const fileHits = new Set<string>();
+      const folderHits = new Set<string>();
+      root.querySelectorAll<HTMLElement>("[data-select-id]").forEach((el) => {
+        const id = el.dataset.selectId;
+        const type = el.dataset.selectType;
+        if (!id) return;
+        const b = el.getBoundingClientRect();
+        if (b.right < selLeft || b.left > selRight || b.bottom < selTop || b.top > selBottom) return;
+        if (type === "file") fileHits.add(id);
+        else if (type === "folder") folderHits.add(id);
+      });
+
+      if (additive) {
+        setSelectedFileIds(new Set([...initialFiles, ...fileHits]));
+        setSelectedFolderIds(new Set([...initialFolders, ...folderHits]));
+      } else {
+        setSelectedFileIds(fileHits);
+        setSelectedFolderIds(folderHits);
+      }
+    };
+
+    const handleUp = () => {
+      document.removeEventListener("mousemove", handleMove);
+      document.removeEventListener("mouseup", handleUp);
+      setMarqueeRect(null);
+      if (dragging) {
+        // Suppress the subsequent click from clearing selection.
+        setTimeout(() => {
+          marqueeDragRef.current = false;
+        }, 0);
+      } else {
+        marqueeDragRef.current = false;
+      }
+    };
+
+    document.addEventListener("mousemove", handleMove);
+    document.addEventListener("mouseup", handleUp);
+  }
+
   return (
-    <div 
-      className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-8 md:py-10"
-      onClick={clearSelection}
+    <div
+      ref={rootRef}
+      className="relative mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 md:px-8 md:py-10 select-none"
+      onMouseDown={handleRootMouseDown}
+      onClick={() => {
+        if (marqueeDragRef.current) return;
+        clearSelection();
+      }}
     >
+      {marqueeRect && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute z-40 rounded-[2px] border border-primary/60 bg-primary/15"
+          style={{
+            left: marqueeRect.x,
+            top: marqueeRect.y,
+            width: marqueeRect.w,
+            height: marqueeRect.h,
+          }}
+        />
+      )}
       {/* Heading */}
       <header className="flex flex-col gap-1.5">
         <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
@@ -877,7 +1018,7 @@ export default function DashboardPage() {
                     folder={folder}
                     fileCount={fileCountsByFolder[folder.id] ?? 0}
                     selected={selectedFolderIds.has(folder.id)}
-                    onSelectChange={(c, shiftKey) => toggleFolderSelection(folder.id, c, shiftKey)}
+                    onSelectChange={(c, mode) => toggleFolderSelection(folder.id, c, mode)}
                     onClick={() => handleOpenFolder(folder)}
                   />
                 ))}
@@ -893,7 +1034,7 @@ export default function DashboardPage() {
                       folder={folder}
                       selected={selected}
                       count={count}
-                      onSelect={(checked, shiftKey) => toggleFolderSelection(folder.id, checked, shiftKey)}
+                      onSelect={(checked, mode) => toggleFolderSelection(folder.id, checked, mode)}
                       onOpen={() => handleOpenFolder(folder)}
                     />
                   );
@@ -1025,7 +1166,7 @@ export default function DashboardPage() {
                     file={file}
                     folderTrail={normalizedFolderTrail}
                     selected={selectedFileIds.has(file.id)}
-                    onSelectChange={(c, shiftKey) => toggleSelection(file.id, c, shiftKey)}
+                    onSelectChange={(c, mode) => toggleSelection(file.id, c, mode)}
                     onOpenFile={handleOpenFile}
                   />
                 ))}
@@ -1044,8 +1185,9 @@ export default function DashboardPage() {
                     key={file.id}
                     file={file}
                     folderTrail={normalizedFolderTrail}
+                    folderById={liveFolderById}
                     selected={selectedFileIds.has(file.id)}
-                    onSelectChange={(c, shiftKey) => toggleSelection(file.id, c, shiftKey)}
+                    onSelectChange={(c, mode) => toggleSelection(file.id, c, mode)}
                     onOpenFile={handleOpenFile}
                   />
                 ))}
@@ -1129,7 +1271,6 @@ export default function DashboardPage() {
         open={selectedPdfFile !== null}
         file={selectedPdfFile}
         onShare={handlePdfPreviewShare}
-        onDetails={handlePdfPreviewDetails}
         onDelete={handlePdfPreviewDelete}
         onOpenChange={(isOpen) => {
           if (!isOpen) {

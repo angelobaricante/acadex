@@ -43,22 +43,28 @@ export default function FolderListRow({
   folder: Folder;
   selected: boolean;
   count: number;
-  onSelect: (checked: boolean, shiftKey?: boolean) => void;
+  onSelect: (checked: boolean, mode?: "replace" | "range" | "toggle") => void;
   onOpen: () => void;
 }) {
   const tint = FOLDER_TINT[folder.color];
 
   return (
-    <div className="group/folder-row relative flex items-center">
+    <div
+      className="group/folder-row relative flex items-center"
+      data-select-id={folder.id}
+      data-select-type="folder"
+    >
       <div
         className={cn(
           "absolute left-3.5 z-10 transition-opacity duration-150",
           selected ? "opacity-100" : "opacity-0 group-hover/folder-row:opacity-100"
         )}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <Checkbox
           checked={selected}
-          onCheckedChange={(checked) => onSelect(checked === true)}
+          onCheckedChange={(checked) => onSelect(checked === true, "toggle")}
           className="border-primary/30 bg-white/60 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-white"
         />
       </div>
@@ -70,10 +76,14 @@ export default function FolderListRow({
           e.preventDefault();
           e.stopPropagation();
           if (e.shiftKey) {
-            onSelect(!selected, true);
+            onSelect(!selected, "range");
             return;
           }
-          if (!selected) onSelect(true, false);
+          if (e.metaKey || e.ctrlKey) {
+            onSelect(!selected, "toggle");
+            return;
+          }
+          onSelect(!selected, "replace");
         }}
         onDoubleClick={(e) => {
           e.preventDefault();
@@ -91,10 +101,14 @@ export default function FolderListRow({
             e.preventDefault();
             e.stopPropagation();
             if (e.shiftKey) {
-              onSelect(!selected, true);
+              onSelect(!selected, "range");
               return;
             }
-            if (!selected) onSelect(true, false);
+            if (e.metaKey || e.ctrlKey) {
+              onSelect(!selected, "toggle");
+              return;
+            }
+            onSelect(!selected, "replace");
           }
         }}
         className={cn(

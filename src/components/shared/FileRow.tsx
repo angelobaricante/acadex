@@ -4,6 +4,7 @@ import {
   FileImage,
   FileText,
   FileVideo,
+  Folder as FolderIcon,
   Presentation,
   type LucideIcon,
 } from "lucide-react";
@@ -19,8 +20,9 @@ import FileActionsMenu from "./FileActionsMenu";
 interface FileRowProps {
   file: ArchivedFile;
   folderTrail?: Folder[];
+  folderById?: Map<string, Folder> | null;
   selected?: boolean;
-  onSelectChange?: (checked: boolean, shiftKey?: boolean) => void;
+  onSelectChange?: (checked: boolean, mode?: "replace" | "range" | "toggle") => void;
   onOpenFile?: (file: ArchivedFile) => void;
 }
 
@@ -41,13 +43,22 @@ function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: 
   }
 }
 
-export default function FileRow({ file, folderTrail, selected, onSelectChange, onOpenFile }: FileRowProps) {
+export default function FileRow({ file, folderTrail, folderById, selected, onSelectChange, onOpenFile }: FileRowProps) {
   const navigate = useNavigate();
   const { setSearch } = useShellSearch();
   const config = fileTypeConfig(file.kind);
   const Icon = config.Icon;
   const visibleTags = file.tags.slice(0, 2);
   const overflow = file.tags.length - visibleTags.length;
+
+  const locationFolder = file.folderId ? folderById?.get(file.folderId) ?? null : null;
+  const locationName = locationFolder?.name ?? "My Archive";
+
+  const handleLocationClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigate("/", { state: { folderTrail: locationFolder ? [locationFolder] : [] } });
+  };
 
   const fileNameWithoutExt = file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, "") : file.name;
   const extension = file.name.includes('.') ? file.name.split('.').pop()?.toUpperCase() : "";
@@ -56,32 +67,29 @@ export default function FileRow({ file, folderTrail, selected, onSelectChange, o
     e.preventDefault();
     e.stopPropagation();
     const shiftKey = "shiftKey" in e ? e.shiftKey : false;
+    const metaKey = "metaKey" in e ? e.metaKey || e.ctrlKey : false;
     if (shiftKey) {
-      onSelectChange?.(!selected, true);
+      onSelectChange?.(!selected, "range");
       return;
     }
-    if (!selected) onSelectChange?.(true, false);
+    if (metaKey) {
+      onSelectChange?.(!selected, "toggle");
+      return;
+    }
+    onSelectChange?.(!selected, "replace");
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (onOpenFile) {
-      onOpenFile(file);
-      return;
-    }
-    navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+    onOpenFile?.(file);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
-      if (onOpenFile) {
-        onOpenFile(file);
-        return;
-      }
-      navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+      onOpenFile?.(file);
       return;
     }
     if (e.key === " ") {
@@ -96,16 +104,22 @@ export default function FileRow({ file, folderTrail, selected, onSelectChange, o
   };
 
   return (
-    <div className="group/file-row relative flex items-center">
-      <div 
+    <div
+      className="group/file-row relative flex items-center"
+      data-select-id={file.id}
+      data-select-type="file"
+    >
+      <div
         className={cn(
           "absolute left-3.5 z-10 transition-opacity duration-150",
           selected ? "opacity-100" : "opacity-0 group-hover/file-row:opacity-100"
         )}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
-        <Checkbox 
+        <Checkbox
           checked={selected}
-          onCheckedChange={(checked) => onSelectChange?.(checked === true)}
+          onCheckedChange={(checked) => onSelectChange?.(checked === true, "toggle")}
           className="border-primary/30 bg-white/60 shadow-sm data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-white"
         />
       </div>
@@ -118,8 +132,8 @@ export default function FileRow({ file, folderTrail, selected, onSelectChange, o
         onKeyDown={handleKeyDown}
         data-slot="file-row"
         className={cn(
-          "grid flex-1 items-center gap-4 rounded-lg border py-2.5 pr-12 pl-[42px]",
-          "grid-cols-[24px_minmax(0,1fr)_auto_96px_96px]",
+          "grid flex-1 items-center gap-4 rounded-lg border py-2.5 pr-12 pl-[42px] select-none",
+          "grid-cols-[24px_minmax(0,1fr)_auto_120px_96px_96px]",
           "transition-colors duration-150",
           selected ? "border-primary/40 bg-primary/[0.02]" : "border-transparent hover:border-border/80 hover:bg-white",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
@@ -162,6 +176,21 @@ export default function FileRow({ file, folderTrail, selected, onSelectChange, o
       </div>
 
       <SavingsBadge ratio={file.compressionRatio} />
+
+      <button
+        type="button"
+        onClick={handleLocationClick}
+        onMouseDown={(e) => e.stopPropagation()}
+        onDoubleClick={(e) => e.stopPropagation()}
+        className="flex min-w-0 items-center gap-1.5 rounded-md px-1.5 -mx-1.5 py-0.5 text-left text-[12.5px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        <FolderIcon
+          aria-hidden="true"
+          strokeWidth={1.8}
+          className="size-3.5 shrink-0 text-muted-foreground/70"
+        />
+        <span className="truncate">{locationName}</span>
+      </button>
 
       <span className="text-right text-[12.5px] text-foreground tabular-nums">
         {formatBytes(file.storedBytes)}

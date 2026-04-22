@@ -22,6 +22,36 @@ export default function FolderUploadDialog() {
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [creatingSubmitting, setCreatingSubmitting] = useState(false);
+  const newFolderInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (creatingFolder) {
+      const id = setTimeout(() => newFolderInputRef.current?.focus(), 0);
+      return () => clearTimeout(id);
+    }
+  }, [creatingFolder]);
+
+  async function handleCreateFolder() {
+    const name = newFolderName.trim();
+    if (!name || creatingSubmitting) return;
+    setCreatingSubmitting(true);
+    try {
+      const folder = await createFolder(name);
+      setFolders((prev) => [folder, ...prev]);
+      setTargetFolderId(folder.id);
+      setNewFolderName("");
+      setCreatingFolder(false);
+      useUIStore.getState().bumpFoldersVersion();
+      toast.success(`Folder '${folder.name}' created`);
+    } catch {
+      toast.error("Couldn't create folder");
+    } finally {
+      setCreatingSubmitting(false);
+    }
+  }
 
   // Reset local state when dialog closes.
   useEffect(() => {
@@ -96,7 +126,7 @@ export default function FolderUploadDialog() {
     >
       <DialogContent
         className={cn(
-          "sm:max-w-[440px] gap-5 p-6",
+          "sm:max-w-[440px] gap-5 p-6 overflow-hidden",
           "shadow-[0_1px_0_rgba(16,24,40,0.02),0_20px_40px_-12px_rgba(16,24,40,0.18)]"
         )}
       >
@@ -114,13 +144,11 @@ export default function FolderUploadDialog() {
           role="button"
           tabIndex={0}
           aria-disabled={uploading}
-          onClick={() => {
-            if (!uploading) inputRef.current?.click();
-          }}
+          onClick={openFolderPicker}
           onKeyDown={(e) => {
             if ((e.key === "Enter" || e.key === " ") && !uploading) {
               e.preventDefault();
-              inputRef.current?.click();
+              openFolderPicker();
             }
           }}
           onDragOver={(e) => {
@@ -147,7 +175,7 @@ export default function FolderUploadDialog() {
             )}
           >
             {uploading ? (
-              <Loader2 className="size-5 animate-spin" strokeWidth={1.8} />
+              <BrandSpinner size={26} />
             ) : (
               <FolderUp className="size-5" strokeWidth={1.6} />
             )}

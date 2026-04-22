@@ -1,6 +1,5 @@
 import { useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
-import { useNavigate } from "react-router-dom";
 import {
   Check,
   ExternalLink,
@@ -16,6 +15,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuPortal,
   DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
@@ -41,8 +41,7 @@ interface FileActionsMenuProps {
   onOpenFile?: (file: ArchivedFile) => void;
 }
 
-export default function FileActionsMenu({ file, variant = "card", folderTrail, onOpenFile }: FileActionsMenuProps) {
-  const navigate = useNavigate();
+export default function FileActionsMenu({ file, variant = "card", onOpenFile }: FileActionsMenuProps) {
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
   const [folders, setFolders] = useState<Folder[] | null>(null);
   const [loadingFolders, setLoadingFolders] = useState(false);
@@ -62,11 +61,7 @@ export default function FileActionsMenu({ file, variant = "card", folderTrail, o
   }
 
   function handleOpen() {
-    if (onOpenFile) {
-      onOpenFile(file);
-      return;
-    }
-    navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+    onOpenFile?.(file);
   }
 
   async function handleCopyLink() {
@@ -176,7 +171,13 @@ export default function FileActionsMenu({ file, variant = "card", folderTrail, o
             <FolderIcon className="size-[14px] text-muted-foreground" strokeWidth={1.8} />
             <span>Move to folder</span>
           </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent className="w-56 p-1">
+          <DropdownMenuPortal>
+          <DropdownMenuSubContent
+            className="w-56 p-1"
+            sideOffset={4}
+            alignOffset={-4}
+            collisionPadding={12}
+            avoidCollisions>
             {file.folderId ? (
               <>
                 <DropdownMenuItem
@@ -217,6 +218,7 @@ export default function FileActionsMenu({ file, variant = "card", folderTrail, o
               })
             )}
           </DropdownMenuSubContent>
+          </DropdownMenuPortal>
         </DropdownMenuSub>
 
         <DropdownMenuSeparator />

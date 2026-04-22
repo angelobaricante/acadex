@@ -1,4 +1,3 @@
-import { useNavigate } from "react-router-dom";
 import {
   FileIcon,
   FileImage,
@@ -20,7 +19,7 @@ interface FileCardProps {
   file: ArchivedFile;
   folderTrail?: Folder[];
   selected?: boolean;
-  onSelectChange?: (checked: boolean, shiftKey?: boolean) => void;
+  onSelectChange?: (checked: boolean, mode?: "replace" | "range" | "toggle") => void;
   onOpenFile?: (file: ArchivedFile) => void;
 }
 
@@ -42,7 +41,6 @@ function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: 
 }
 
 export default function FileCard({ file, folderTrail, selected, onSelectChange, onOpenFile }: FileCardProps) {
-  const navigate = useNavigate();
   const { setSearch } = useShellSearch();
   const config = fileTypeConfig(file.kind);
   const Icon = config.Icon;
@@ -56,32 +54,29 @@ export default function FileCard({ file, folderTrail, selected, onSelectChange, 
     e.preventDefault();
     e.stopPropagation();
     const shiftKey = "shiftKey" in e ? e.shiftKey : false;
+    const metaKey = "metaKey" in e ? e.metaKey || e.ctrlKey : false;
     if (shiftKey) {
-      onSelectChange?.(!selected, true);
+      onSelectChange?.(!selected, "range");
       return;
     }
-    if (!selected) onSelectChange?.(true, false);
+    if (metaKey) {
+      onSelectChange?.(!selected, "toggle");
+      return;
+    }
+    onSelectChange?.(!selected, "replace");
   };
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (onOpenFile) {
-      onOpenFile(file);
-      return;
-    }
-    navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+    onOpenFile?.(file);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
-      if (onOpenFile) {
-        onOpenFile(file);
-        return;
-      }
-      navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+      onOpenFile?.(file);
       return;
     }
     if (e.key === " ") {
@@ -96,7 +91,11 @@ export default function FileCard({ file, folderTrail, selected, onSelectChange, 
   };
 
   return (
-    <div className="group/file-card relative h-full">
+    <div
+      className="group/file-card relative h-full"
+      data-select-id={file.id}
+      data-select-type="file"
+    >
       <div
         role="button"
         tabIndex={0}
@@ -105,7 +104,7 @@ export default function FileCard({ file, folderTrail, selected, onSelectChange, 
         onKeyDown={handleKeyDown}
         data-slot="file-card"
         className={cn(
-          "relative flex h-full flex-col overflow-hidden rounded-xl border bg-card",
+          "relative flex h-full flex-col overflow-hidden rounded-xl border bg-card select-none",
           "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
           "transition-[border-color,background-color] duration-200 ease-out",
           selected ? "border-primary/40 bg-primary/[0.02]" : "border-border/70 hover:border-primary/20",
@@ -185,15 +184,17 @@ export default function FileCard({ file, folderTrail, selected, onSelectChange, 
       </div>
       <FileActionsMenu file={file} variant="card" folderTrail={folderTrail} onOpenFile={onOpenFile} />
 
-      <div 
+      <div
         className={cn(
           "absolute left-2.5 top-2.5 z-10 transition-opacity duration-200",
           selected ? "opacity-100" : "opacity-0 group-hover/file-card:opacity-100"
         )}
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
-        <Checkbox 
+        <Checkbox
           checked={selected}
-          onCheckedChange={(checked) => onSelectChange?.(checked === true)}
+          onCheckedChange={(checked) => onSelectChange?.(checked === true, "toggle")}
           className="border-primary/30 bg-white/60 shadow-sm backdrop-blur-md data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-white"
         />
       </div>
