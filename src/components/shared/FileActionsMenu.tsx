@@ -1,6 +1,5 @@
 import { useState } from "react";
 import ConfirmDialog from "./ConfirmDialog";
-import { useNavigate } from "react-router-dom";
 import {
   Check,
   ExternalLink,
@@ -42,8 +41,7 @@ interface FileActionsMenuProps {
   onOpenFile?: (file: ArchivedFile) => void;
 }
 
-export default function FileActionsMenu({ file, variant = "card", folderTrail, onOpenFile }: FileActionsMenuProps) {
-  const navigate = useNavigate();
+export default function FileActionsMenu({ file, variant = "card", onOpenFile }: FileActionsMenuProps) {
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
   const [folders, setFolders] = useState<Folder[] | null>(null);
   const [loadingFolders, setLoadingFolders] = useState(false);
@@ -63,11 +61,7 @@ export default function FileActionsMenu({ file, variant = "card", folderTrail, o
   }
 
   function handleOpen() {
-    if (onOpenFile) {
-      onOpenFile(file);
-      return;
-    }
-    navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+    onOpenFile?.(file);
   }
 
   async function handleCopyLink() {

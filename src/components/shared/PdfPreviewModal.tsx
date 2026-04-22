@@ -149,7 +149,6 @@ interface PdfPreviewModalProps {
   file: ArchivedFile | null;
   onOpenChange: (open: boolean) => void;
   onShare?: (file: ArchivedFile) => void;
-  onDetails?: (file: ArchivedFile) => void;
   onDelete?: (file: ArchivedFile) => Promise<void> | void;
 }
 
@@ -158,7 +157,6 @@ export default function PdfPreviewModal({
   file,
   onOpenChange,
   onShare,
-  onDetails,
   onDelete,
 }: PdfPreviewModalProps) {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -225,14 +223,6 @@ export default function PdfPreviewModal({
 
   function handleDetails() {
     setDetailsOpen(true);
-  }
-
-  function handleOpenFullDetails() {
-    if (onDetails) {
-      onDetails(currentFile);
-      return;
-    }
-    window.open(currentFile.previewUrl, "_blank", "noopener,noreferrer");
   }
 
   async function handleDelete() {
@@ -464,18 +454,6 @@ export default function PdfPreviewModal({
                   )}
                 </div>
 
-                {onDetails && (
-                  <div className="mt-auto pt-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleOpenFullDetails}
-                      className="w-full justify-center text-[12px] text-muted-foreground"
-                    >
-                      Open full page
-                    </Button>
-                  </div>
-                )}
               </div>
             </aside>
           )}

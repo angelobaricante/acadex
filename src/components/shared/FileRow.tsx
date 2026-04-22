@@ -82,22 +82,14 @@ export default function FileRow({ file, folderTrail, folderById, selected, onSel
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (onOpenFile) {
-      onOpenFile(file);
-      return;
-    }
-    navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+    onOpenFile?.(file);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
       e.stopPropagation();
-      if (onOpenFile) {
-        onOpenFile(file);
-        return;
-      }
-      navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+      onOpenFile?.(file);
       return;
     }
     if (e.key === " ") {

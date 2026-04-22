@@ -664,11 +664,6 @@ export default function DashboardPage() {
     openShare(file.id);
   }
 
-  function handlePdfPreviewDetails(file: ArchivedFile) {
-    setSelectedPdfFile(null);
-    navigate(`/file/${file.id}`, { state: { folderTrail: normalizedFolderTrail } });
-  }
-
   async function handlePdfPreviewDelete(file: ArchivedFile) {
     try {
       await deleteFile(file.id);
@@ -1274,7 +1269,6 @@ export default function DashboardPage() {
         open={selectedPdfFile !== null}
         file={selectedPdfFile}
         onShare={handlePdfPreviewShare}
-        onDetails={handlePdfPreviewDetails}
         onDelete={handlePdfPreviewDelete}
         onOpenChange={(isOpen) => {
           if (!isOpen) {
