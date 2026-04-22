@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, FolderUp, Folder as FolderIcon, FolderPlus } from "lucide-react";
-import BrandSpinner from "@/components/shared/BrandSpinner";
+import { FolderUp, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -9,31 +8,19 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
-import { createFolder, listFolders, moveFileToFolder, uploadFile } from "@/lib/api";
-import type { Folder } from "@/lib/types";
+import { uploadFolder } from "@/lib/api";
 import { toast } from "sonner";
-import { showFileUploadToast, showFolderUploadToast } from "@/components/shared/uploadToast";
+import { showFolderUploadToast } from "@/components/shared/uploadToast";
 
 export default function FolderUploadDialog() {
   const open = useUIStore((s) => s.folderUploadDialogOpen);
   const closeFolderUpload = useUIStore((s) => s.closeFolderUpload);
-  const currentFolderId = useUIStore((s) => s.currentFolderId);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -66,20 +53,6 @@ export default function FolderUploadDialog() {
     }
   }
 
-  // Load folders + seed initial target when dialog opens.
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    listFolders().then((result) => {
-      if (cancelled) return;
-      setFolders(result);
-    });
-    setTargetFolderId(currentFolderId);
-    return () => {
-      cancelled = true;
-    };
-  }, [open, currentFolderId]);
-
   // Reset local state when dialog closes.
   useEffect(() => {
     if (!open) {
@@ -89,102 +62,39 @@ export default function FolderUploadDialog() {
     }
   }, [open]);
 
-  const targetFolder = folders.find((f) => f.id === targetFolderId) ?? null;
-
-  async function pickFolderViaFSAccess() {
-    const w = window as unknown as {
-      showDirectoryPicker?: (opts?: { mode?: "read" | "readwrite" }) => Promise<FileSystemDirectoryHandle>;
-    };
-    if (!w.showDirectoryPicker) return false;
-    try {
-      const handle = await w.showDirectoryPicker({ mode: "read" });
-      const collected: File[] = [];
-      async function walk(dirHandle: FileSystemDirectoryHandle) {
-        for await (const entry of (dirHandle as unknown as AsyncIterable<FileSystemHandle>)) {
-          if (entry.kind === "file") {
-            const fileHandle = entry as FileSystemFileHandle;
-            collected.push(await fileHandle.getFile());
-          } else if (entry.kind === "directory") {
-            await walk(entry as FileSystemDirectoryHandle);
-          }
-        }
-      }
-      await walk(handle);
-      await handleFiles(collected);
-      return true;
-    } catch (err) {
-      // User aborted the picker — treat as no-op, silently.
-      if (err instanceof DOMException && err.name === "AbortError") return true;
-      return false;
-    }
-  }
-
-  function openFolderPicker() {
-    if (uploading) return;
-    void pickFolderViaFSAccess().then((handled) => {
-      if (!handled) inputRef.current?.click();
-    });
-  }
-
-  async function handleFiles(fileList: FileList | File[] | null) {
-    if (!fileList || (Array.isArray(fileList) ? fileList.length === 0 : fileList.length === 0)) return;
-    const files = Array.isArray(fileList) ? fileList : Array.from(fileList);
+  async function handleFiles(fileList: FileList | null) {
+    if (!fileList || fileList.length === 0) return;
     setUploading(true);
-    setProgress({ done: 0, total: files.length });
-
-    let succeededCount = 0;
-    let totalOriginal = 0;
-    let totalStored = 0;
+    setProgress({ done: 0, total: fileList.length });
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        try {
-          const result = await uploadFile(file, targetFolderId);
-          if (targetFolderId) {
-            try {
-              await moveFileToFolder(result.id, targetFolderId);
-            } catch {
-              toast.error(`Couldn't move ${file.name} to '${targetFolder?.name ?? "folder"}'`);
-            }
-          }
+      const summary = await uploadFolder(fileList, (done, total) => {
+        setProgress({ done, total });
+      });
 
-          // Individual toast only when a single file is dropped.
-          if (files.length === 1) {
-            showFileUploadToast({
-              name: result.name ?? file.name,
-              originalBytes: result.originalBytes,
-              storedBytes: result.storedBytes,
-              compressionRatio: result.compressionRatio,
-              targetFolderName: targetFolder?.name,
-            });
-          }
-
-          succeededCount++;
-          totalOriginal += result.originalBytes;
-          totalStored += result.storedBytes;
-        } catch {
-          toast.error(`Failed to upload ${file.name}`);
-        }
-        setProgress({ done: i + 1, total: files.length });
-      }
-
-      // Summary toast for the whole folder batch.
-      if (files.length > 1 && succeededCount > 0) {
+      if (summary.succeeded > 0) {
         showFolderUploadToast({
-          fileCount: succeededCount,
-          totalOriginalBytes: totalOriginal,
-          totalStoredBytes: totalStored,
-          totalCompressionRatio: totalOriginal > 0 ? (totalOriginal - totalStored) / totalOriginal : 0,
-          targetFolderName: targetFolder?.name,
+          fileCount: summary.succeeded,
+          totalOriginalBytes: summary.totalOriginalBytes,
+          totalStoredBytes: summary.totalStoredBytes,
+          totalCompressionRatio:
+            summary.totalOriginalBytes > 0
+              ? (summary.totalOriginalBytes - summary.totalStoredBytes) / summary.totalOriginalBytes
+              : 0,
+          targetFolderName: undefined,
         });
       }
 
-      useUIStore.getState().bumpUploadsVersion();
-      if (targetFolderId) {
-        useUIStore.getState().bumpFoldersVersion();
+      if (summary.failed > 0) {
+        toast.error(`${summary.failed} file(s) failed to upload.`);
       }
+
+      useUIStore.getState().bumpUploadsVersion();
+      useUIStore.getState().bumpFoldersVersion();
       closeFolderUpload();
+    } catch (error) {
+      toast.error("Folder upload failed. Please try again.");
+      console.error("[FolderUploadDialog] uploadFolder error:", error);
     } finally {
       setUploading(false);
       setProgress(null);
@@ -228,132 +138,6 @@ export default function FolderUploadDialog() {
             Select a local folder to upload all its files at once. AcaDex compresses each file on the fly.
           </DialogDescription>
         </DialogHeader>
-
-        {/* Destination folder picker */}
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-            Upload to
-          </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={uploading}
-                className="h-8 w-full justify-start gap-2 rounded-lg px-2.5 text-[12.5px] font-normal"
-              >
-                <FolderIcon
-                  className="size-[14px] text-muted-foreground"
-                  strokeWidth={1.8}
-                />
-                <span className="flex-1 truncate text-left text-foreground">
-                  {targetFolder ? targetFolder.name : "All files"}
-                </span>
-                <ChevronDown className="size-[14px] text-muted-foreground/70" strokeWidth={1.8} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="w-[calc(var(--radix-dropdown-menu-trigger-width))] p-1"
-            >
-              <DropdownMenuItem
-                onSelect={() => setTargetFolderId(null)}
-                className="gap-2 px-2 py-1.5 text-[13px]"
-              >
-                <FolderIcon
-                  className="size-[14px] text-muted-foreground"
-                  strokeWidth={1.8}
-                />
-                <span>All files</span>
-                {targetFolderId === null && (
-                  <Check
-                    className="ml-auto size-[13px] text-primary"
-                    strokeWidth={2}
-                  />
-                )}
-              </DropdownMenuItem>
-              {folders.map((folder) => (
-                <DropdownMenuItem
-                  key={folder.id}
-                  onSelect={() => setTargetFolderId(folder.id)}
-                  className="gap-2 px-2 py-1.5 text-[13px]"
-                >
-                  <FolderIcon
-                    className="size-[14px] text-muted-foreground"
-                    strokeWidth={1.8}
-                  />
-                  <span className="truncate">{folder.name}</span>
-                  {targetFolderId === folder.id && (
-                    <Check
-                      className="ml-auto size-[13px] text-primary"
-                      strokeWidth={2}
-                    />
-                  )}
-                </DropdownMenuItem>
-              ))}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onSelect={(e) => {
-                  e.preventDefault();
-                  setCreatingFolder(true);
-                }}
-                className="gap-2 px-2 py-1.5 text-[13px] text-primary focus:text-primary focus:bg-primary/10"
-              >
-                <FolderPlus className="size-[14px]" strokeWidth={1.8} />
-                <span>New folder</span>
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-          {creatingFolder && (
-            <div className="mt-1.5 flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/[0.04] p-1.5 animate-in fade-in slide-in-from-top-1 duration-150">
-              <FolderPlus className="ml-1 size-[14px] shrink-0 text-primary" strokeWidth={1.8} />
-              <Input
-                ref={newFolderInputRef}
-                type="text"
-                value={newFolderName}
-                onChange={(e) => setNewFolderName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    void handleCreateFolder();
-                  } else if (e.key === "Escape") {
-                    e.preventDefault();
-                    setCreatingFolder(false);
-                    setNewFolderName("");
-                  }
-                }}
-                disabled={creatingSubmitting}
-                maxLength={64}
-                placeholder="Folder name"
-                className="h-7 flex-1 border-transparent bg-transparent px-1.5 text-[12.5px] shadow-none focus-visible:border-primary/40 focus-visible:bg-white"
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setCreatingFolder(false);
-                  setNewFolderName("");
-                }}
-                disabled={creatingSubmitting}
-                className="h-7 px-2 text-[12px] text-muted-foreground"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                onClick={() => void handleCreateFolder()}
-                disabled={!newFolderName.trim() || creatingSubmitting}
-                className="h-7 px-2.5 text-[12px]"
-              >
-                {creatingSubmitting ? "Creating…" : "Create"}
-              </Button>
-            </div>
-          )}
-        </div>
 
         {/* Drop zone */}
         <div
