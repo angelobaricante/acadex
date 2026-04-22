@@ -1,11 +1,14 @@
 import { Folder as FolderIcon } from "lucide-react";
 import type { Folder, FolderColor } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import FolderActionsMenu from "./FolderActionsMenu";
 
 interface FolderTileProps {
   folder: Folder;
   fileCount: number;
-  onClick: () => void;
+  selected?: boolean;
+  onSelectChange?: (selected: boolean) => void;
+  onClick: () => void; // This will act as onOpen
 }
 
 const FOLDER_TINT: Record<
@@ -42,19 +45,39 @@ const FOLDER_TINT: Record<
 export default function FolderTile({
   folder,
   fileCount,
+  selected,
+  onSelectChange,
   onClick,
 }: FolderTileProps) {
   const tint = FOLDER_TINT[folder.color];
+
+  const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onSelectChange && !selected) {
+      onSelectChange(true);
+    } else {
+      onClick();
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      handleClick(e);
+    }
+  };
+
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={handleClick}
+      onKeyDown={handleKeyDown}
       className={cn(
-        "group/folder-tile flex h-[60px] w-[180px] shrink-0 items-center gap-2.5 rounded-xl border border-border/70 bg-card px-2.5 text-left",
+        "group/folder-tile flex h-[60px] w-[220px] shrink-0 items-center gap-2.5 rounded-xl border bg-card pl-2.5 pr-1.5 text-left",
         "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
-        "transition-[transform,box-shadow,border-color] duration-200 ease-out",
-        "hover:-translate-y-px hover:border-primary/30",
-        "hover:shadow-[0_1px_0_rgba(16,24,40,0.03),0_8px_20px_-8px_rgba(16,24,40,0.10)]",
+        "transition-colors duration-200 ease-out",
+        selected ? "border-primary/40 bg-primary/[0.03]" : "border-border/70 hover:border-primary/30",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       )}
     >
@@ -77,6 +100,7 @@ export default function FolderTile({
           {fileCount} {fileCount === 1 ? "file" : "files"}
         </span>
       </span>
-    </button>
+      <FolderActionsMenu folder={folder} onOpen={onClick} />
+    </div>
   );
 }

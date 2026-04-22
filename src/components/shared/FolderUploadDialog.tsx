@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, FileUp, Folder as FolderIcon, Loader2 } from "lucide-react";
+import { Check, ChevronDown, FolderUp, Folder as FolderIcon, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -18,13 +18,12 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
 import { listFolders, moveFileToFolder, uploadFile } from "@/lib/api";
 import type { Folder } from "@/lib/types";
-import { formatBytes, formatPercent } from "@/lib/format";
 import { toast } from "sonner";
-import { showFileUploadToast } from "@/components/shared/uploadToast";
+import { showFileUploadToast, showFolderUploadToast } from "@/components/shared/uploadToast";
 
-export default function UploadDialog() {
-  const uploadDialogOpen = useUIStore((s) => s.uploadDialogOpen);
-  const closeUpload = useUIStore((s) => s.closeUpload);
+export default function FolderUploadDialog() {
+  const open = useUIStore((s) => s.folderUploadDialogOpen);
+  const closeFolderUpload = useUIStore((s) => s.closeFolderUpload);
   const currentFolderId = useUIStore((s) => s.currentFolderId);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -32,10 +31,11 @@ export default function UploadDialog() {
   const [dragOver, setDragOver] = useState(false);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   // Load folders + seed initial target when dialog opens.
   useEffect(() => {
-    if (!uploadDialogOpen) return;
+    if (!open) return;
     let cancelled = false;
     listFolders().then((result) => {
       if (cancelled) return;
@@ -45,15 +45,16 @@ export default function UploadDialog() {
     return () => {
       cancelled = true;
     };
-  }, [uploadDialogOpen, currentFolderId]);
+  }, [open, currentFolderId]);
 
   // Reset local state when dialog closes.
   useEffect(() => {
-    if (!uploadDialogOpen) {
+    if (!open) {
       setUploading(false);
       setDragOver(false);
+      setProgress(null);
     }
-  }, [uploadDialogOpen]);
+  }, [open]);
 
   const targetFolder = folders.find((f) => f.id === targetFolderId) ?? null;
 
@@ -61,13 +62,15 @@ export default function UploadDialog() {
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList);
     setUploading(true);
+    setProgress({ done: 0, total: files.length });
 
     let succeededCount = 0;
     let totalOriginal = 0;
     let totalStored = 0;
 
     try {
-      for (const file of files) {
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         try {
           const result = await uploadFile(file);
           if (targetFolderId) {
@@ -78,7 +81,7 @@ export default function UploadDialog() {
             }
           }
 
-          // For single file OR each file in small batches, show individual toast.
+          // Individual toast only when a single file is dropped.
           if (files.length === 1) {
             showFileUploadToast({
               name: result.name ?? file.name,
@@ -95,11 +98,11 @@ export default function UploadDialog() {
         } catch {
           toast.error(`Failed to upload ${file.name}`);
         }
+        setProgress({ done: i + 1, total: files.length });
       }
 
-      // For multi-file batches, show a single summary toast.
+      // Summary toast for the whole folder batch.
       if (files.length > 1 && succeededCount > 0) {
-        const { showFolderUploadToast } = await import("@/components/shared/uploadToast");
         showFolderUploadToast({
           fileCount: succeededCount,
           totalOriginalBytes: totalOriginal,
@@ -113,9 +116,10 @@ export default function UploadDialog() {
       if (targetFolderId) {
         useUIStore.getState().bumpFoldersVersion();
       }
-      closeUpload();
+      closeFolderUpload();
     } finally {
       setUploading(false);
+      setProgress(null);
     }
   }
 
@@ -123,14 +127,23 @@ export default function UploadDialog() {
     e.preventDefault();
     setDragOver(false);
     if (uploading) return;
-    void handleFiles(e.dataTransfer.files);
+    // Collect all files from dropped items (folders & files)
+    const items = Array.from(e.dataTransfer.items);
+    const dt = new DataTransfer();
+    for (const item of items) {
+      if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (f) dt.items.add(f);
+      }
+    }
+    void handleFiles(dt.files);
   }
 
   return (
     <Dialog
-      open={uploadDialogOpen}
+      open={open}
       onOpenChange={(o) => {
-        if (!o) closeUpload();
+        if (!o) closeFolderUpload();
       }}
     >
       <DialogContent
@@ -141,14 +154,14 @@ export default function UploadDialog() {
       >
         <DialogHeader className="gap-1.5">
           <DialogTitle className="text-[15px] font-semibold tracking-tight">
-            Upload files
+            Upload folder
           </DialogTitle>
           <DialogDescription className="text-[13px] text-muted-foreground/90">
-            AcaDex compresses uploads on the fly to save space without losing fidelity.
+            Select a local folder to upload all its files at once. AcaDex compresses each file on the fly.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Folder picker */}
+        {/* Destination folder picker */}
         <div className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
             Upload to
@@ -215,6 +228,7 @@ export default function UploadDialog() {
           </DropdownMenu>
         </div>
 
+        {/* Drop zone */}
         <div
           role="button"
           tabIndex={0}
@@ -254,31 +268,47 @@ export default function UploadDialog() {
             {uploading ? (
               <Loader2 className="size-5 animate-spin" strokeWidth={1.8} />
             ) : (
-              <FileUp className="size-5" strokeWidth={1.6} />
+              <FolderUp className="size-5" strokeWidth={1.6} />
             )}
           </div>
           <p className="text-[13.5px] font-medium text-foreground">
-            {uploading ? "Compressing…" : "Drop files here or click to browse"}
+            {uploading
+              ? progress
+                ? `Uploading ${progress.done} of ${progress.total} files…`
+                : "Compressing…"
+              : "Drop a folder here or click to browse"}
           </p>
           <p className="text-[11.5px] text-muted-foreground">
-            PDF, DOCX, PPTX, images, video
+            All files inside the folder will be uploaded
           </p>
 
+          {/* Progress bar */}
+          {uploading && progress && (
+            <div className="w-full max-w-[180px] overflow-hidden rounded-full bg-primary/15 h-1.5">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+                style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
+              />
+            </div>
+          )}
+
+          {/* Hidden folder input */}
           <input
             ref={inputRef}
             type="file"
+            // @ts-expect-error — webkitdirectory is a non-standard but widely supported attribute
+            webkitdirectory=""
             multiple
             className="hidden"
             onChange={(e) => {
               void handleFiles(e.target.files);
-              // Reset so selecting the same file again retriggers onChange.
               e.target.value = "";
             }}
           />
         </div>
 
         <div className="flex justify-end">
-          <Button variant="ghost" onClick={closeUpload} disabled={uploading}>
+          <Button variant="ghost" onClick={closeFolderUpload} disabled={uploading}>
             Close
           </Button>
         </div>

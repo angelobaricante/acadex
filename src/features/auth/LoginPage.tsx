@@ -1,24 +1,71 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { GraduationCap, Shield, User as UserIcon, Loader2 } from "lucide-react";
+import { Loader2, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { mockSignIn } from "@/lib/api";
 import { useSessionStore } from "@/lib/store";
 import type { Role } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import AcaDexLogo from "@/components/shared/AcaDexLogo";
 
 interface RoleOption {
   value: Role;
   label: string;
   hint: string;
-  Icon: typeof UserIcon;
 }
 
 const ROLE_OPTIONS: RoleOption[] = [
-  { value: "student", label: "Student", hint: "Maria Santos", Icon: UserIcon },
-  { value: "faculty", label: "Faculty", hint: "Prof. Juan Cruz", Icon: GraduationCap },
-  { value: "admin", label: "Admin", hint: "Ana Reyes", Icon: Shield },
+  { value: "student", label: "Student", hint: "Maria Santos" },
+  { value: "faculty", label: "Faculty", hint: "Prof. Juan Cruz" },
+  { value: "admin", label: "Admin", hint: "Ana Reyes" },
 ];
+
+function StudentIcon({ selected }: { selected: boolean }) {
+  return selected ? (
+    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="currentColor">
+      <circle cx="8" cy="5" r="3" />
+      <path d="M2 15C2 11.686 4.686 9 8 9s6 2.686 6 6H2z" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
+      <circle cx="8" cy="5" r="3" />
+      <path d="M2 15C2 11.686 4.686 9 8 9s6 2.686 6 6" />
+    </svg>
+  );
+}
+
+function FacultyIcon({ selected }: { selected: boolean }) {
+  return selected ? (
+    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="currentColor">
+      <path d="M8 1.5L1 5.5l7 4 7-4-7-4z" />
+      <path d="M3.5 8V12c0 .8 1.8 2.5 4.5 2.5S12.5 12.8 12.5 12V8L8 10.5 3.5 8z" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 1.5L1 5.5l7 4 7-4-7-4z" />
+      <path d="M3.5 8V12c0 .8 1.8 2.5 4.5 2.5S12.5 12.8 12.5 12V8" />
+      <line x1="13.5" y1="5.5" x2="13.5" y2="9.5" />
+    </svg>
+  );
+}
+
+function AdminIcon({ selected }: { selected: boolean }) {
+  return selected ? (
+    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="currentColor">
+      <path d="M8 1L2 4v4c0 3.5 2.667 5.917 6 7 3.333-1.083 6-3.5 6-7V4L8 1z" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 1L2 4v4c0 3.5 2.667 5.917 6 7 3.333-1.083 6-3.5 6-7V4L8 1z" />
+    </svg>
+  );
+}
+
+const ROLE_ICONS: Record<Role, React.ComponentType<{ selected: boolean }>> = {
+  student: StudentIcon,
+  faculty: FacultyIcon,
+  admin: AdminIcon,
+};
 
 function GoogleMark() {
   return (
@@ -48,6 +95,7 @@ export default function LoginPage() {
   const setUser = useSessionStore((s) => s.setUser);
   const [role, setRole] = useState<Role>("faculty");
   const [loading, setLoading] = useState(false);
+  const roleIndex = ROLE_OPTIONS.findIndex((r) => r.value === role);
 
   async function handleSignIn() {
     if (loading) return;
@@ -56,13 +104,15 @@ export default function LoginPage() {
       const user = await mockSignIn(role);
       setUser(user);
       navigate("/", { replace: true });
-    } finally {
+    } catch {
       setLoading(false);
     }
   }
 
   return (
-    <div className="relative min-h-full overflow-hidden bg-[hsl(48_25%_98%)]">
+    <div
+      className="relative min-h-full overflow-hidden bg-[hsl(48_25%_98%)]"
+    >
       {/* Ambient green radial glow, anchored top-left for asymmetry */}
       <div
         aria-hidden="true"
@@ -87,11 +137,11 @@ export default function LoginPage() {
         }}
       />
 
-      <main className="relative mx-auto flex min-h-screen w-full max-w-[440px] flex-col justify-center px-6 py-16">
+      <main className="relative mx-auto flex min-h-screen w-full max-w-[440px] flex-col justify-center px-4 py-10 sm:px-6 sm:py-16">
         {/* Wordmark */}
-        <div className="mb-10 flex items-center gap-2.5">
+        <div className="mb-8 flex items-center gap-2.5 sm:mb-10">
           <div className="flex size-8 items-center justify-center rounded-[7px] bg-primary text-primary-foreground shadow-sm">
-            <span className="text-[15px] font-semibold leading-none tracking-tight">A</span>
+            <AcaDexLogo />
           </div>
           <span className="text-[15px] font-semibold tracking-tight text-foreground">
             AcaDex
@@ -99,9 +149,9 @@ export default function LoginPage() {
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl border border-border/80 bg-card p-7 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_8px_24px_-12px_rgba(16,24,40,0.08)]">
+        <div className="rounded-2xl border border-border/80 bg-card p-5 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_8px_24px_-12px_rgba(16,24,40,0.08)] sm:p-7">
           <div className="mb-6 space-y-1.5">
-            <h1 className="text-[22px] font-semibold leading-tight tracking-tight text-foreground">
+            <h1 className="text-[20px] font-semibold leading-tight tracking-tight text-foreground sm:text-[22px]">
               Welcome back
             </h1>
             <p className="text-[13px] leading-relaxed text-muted-foreground">
@@ -116,7 +166,7 @@ export default function LoginPage() {
             variant="outline"
             disabled={loading}
             onClick={handleSignIn}
-            className="group h-11 w-full justify-center gap-2.5 rounded-lg border-border/80 bg-white text-[13.5px] font-medium text-foreground shadow-sm transition-all hover:-translate-y-px hover:border-border hover:bg-white hover:shadow-md disabled:opacity-70"
+            className="group h-11 w-full justify-center gap-2.5 rounded-lg border-border/80 bg-white text-[13.5px] font-medium text-foreground shadow-sm transition-colors hover:border-border hover:bg-[#f8faff] disabled:opacity-70"
           >
             {loading ? (
               <>
@@ -144,10 +194,21 @@ export default function LoginPage() {
             <div
               role="radiogroup"
               aria-label="Demo role"
-              className="grid grid-cols-3 gap-1 rounded-lg border border-border/80 bg-muted/60 p-1"
+              className="relative grid grid-cols-3 gap-1 rounded-lg border border-border/80 bg-muted/60 p-1"
             >
-              {ROLE_OPTIONS.map(({ value, label, Icon }) => {
+              {/* Sliding selection pill */}
+              <div
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-1 rounded-md bg-white shadow-sm ring-1 ring-border/80 transition-transform duration-200 ease-in-out"
+                style={{
+                  left: "4px",
+                  width: "calc((100% - 16px) / 3)",
+                  transform: `translateX(calc(${roleIndex} * (100% + 4px)))`,
+                }}
+              />
+              {ROLE_OPTIONS.map(({ value, label }) => {
                 const selected = role === value;
+                const RIcon = ROLE_ICONS[value];
                 return (
                   <button
                     key={value}
@@ -157,19 +218,14 @@ export default function LoginPage() {
                     disabled={loading}
                     onClick={() => setRole(value)}
                     className={cn(
-                      "group/role flex h-8 items-center justify-center gap-1.5 rounded-md text-[12.5px] font-medium outline-none transition-all",
+                      "relative flex h-8 items-center justify-center gap-1.5 rounded-md text-[12.5px] font-medium outline-none transition-colors duration-200",
                       "focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60",
                       selected
-                        ? "bg-white text-foreground shadow-sm ring-1 ring-border/80"
+                        ? "text-primary"
                         : "text-muted-foreground hover:text-foreground"
                     )}
                   >
-                    <Icon
-                      className={cn(
-                        "size-3.5 transition-colors",
-                        selected ? "text-primary" : "text-muted-foreground/80"
-                      )}
-                    />
+                    <RIcon selected={selected} />
                     <span>{label}</span>
                   </button>
                 );
@@ -177,19 +233,22 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <p className="mt-5 text-[11.5px] leading-relaxed text-muted-foreground">
-            Demo mode. Google sign-in is simulated — the role above picks which
-            fake user you sign in as.
-          </p>
+          <div className="mt-5 flex gap-2.5 rounded-lg border border-amber-200/70 bg-amber-50/50 px-3 py-2.5">
+            <Info className="mt-px size-3.5 shrink-0 text-amber-500/90" strokeWidth={1.8} />
+            <p className="text-[11.5px] leading-relaxed text-amber-900/60">
+              Demo mode. Google sign-in is simulated — the role above picks
+              which fake user you sign in as.
+            </p>
+          </div>
         </div>
 
         {/* Sustainability stat row */}
-        <div className="mt-8 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11.5px] text-muted-foreground">
-          <StatPill label="avg reduction" value="82%" />
-          <Dot />
-          <StatPill label="files archived" value="520+" />
-          <Dot />
-          <StatPill label="CO₂ saved" value="3.2kg" />
+        <div className="mt-6 flex items-center justify-center gap-4 sm:mt-8 sm:gap-8">
+          <StatPill value="82%" label="Avg Reduction" />
+          <div aria-hidden="true" className="h-7 w-px bg-border sm:h-9" />
+          <StatPill value="520+" label="Files Archived" />
+          <div aria-hidden="true" className="h-7 w-px bg-border sm:h-9" />
+          <StatPill value="3.2kg" label="CO₂ Saved" />
         </div>
       </main>
     </div>
@@ -198,15 +257,13 @@ export default function LoginPage() {
 
 function StatPill({ value, label }: { value: string; label: string }) {
   return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className="font-semibold tabular-nums tracking-tight text-foreground">
+    <div className="flex flex-col gap-1">
+      <span className="text-[22px] font-bold leading-none tabular-nums tracking-tight text-primary sm:text-[28px]">
         {value}
       </span>
-      <span className="text-muted-foreground">{label}</span>
-    </span>
+      <span className="text-[11px] text-muted-foreground sm:text-[11.5px]">
+        {label}
+      </span>
+    </div>
   );
-}
-
-function Dot() {
-  return <span aria-hidden="true" className="size-1 rounded-full bg-border" />;
 }

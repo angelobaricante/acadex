@@ -9,6 +9,7 @@ import FilePreview from "@/features/viewer/FilePreview";
 import SavingsBadge from "@/components/shared/SavingsBadge";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import AcaDexLogo from "@/components/shared/AcaDexLogo";
 
 type Status = "loading" | "ok" | "not_found";
 
@@ -23,10 +24,8 @@ function Header() {
       <div className="flex items-center gap-3">
         <Link to="/" className="flex items-center gap-2.5">
           <div className="flex size-7 items-center justify-center rounded-[6px] bg-primary text-primary-foreground shadow-sm">
-            <span className="text-[13px] font-semibold leading-none tracking-tight">
-              A
-            </span>
-          </div>
+              <AcaDexLogo size="size-[15px]" />
+            </div>
           <span className="text-[14px] font-semibold tracking-tight text-foreground">
             AcaDex
           </span>
