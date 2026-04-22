@@ -14,6 +14,7 @@ import {
   FileImage,
   FileText,
   FileVideo,
+  Folder as FolderIcon,
   FolderOpen,
   FolderUp,
   HardDrive,
@@ -52,12 +53,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-type KindFilter = "all" | FileKind;
+type KindFilter = "all" | "folder" | FileKind;
 type SortKey = "recent" | "largest" | "most_saved";
 type ViewMode = "grid" | "list";
 
 const KIND_OPTIONS: Array<{ value: KindFilter; label: string; icon: LucideIcon }> = [
   { value: "all", label: "All types", icon: FileIcon },
+  { value: "folder", label: "Folders", icon: FolderOpen },
   { value: "pdf", label: "PDFs", icon: FileText },
   { value: "docx", label: "Word Documents", icon: FileText },
   { value: "pptx", label: "Presentations", icon: FileText },
@@ -71,6 +73,34 @@ const SORT_OPTIONS: Array<{ value: SortKey; label: string; icon: LucideIcon }> =
   { value: "largest", label: "Largest original", icon: HardDrive },
   { value: "most_saved", label: "Most saved", icon: TrendingDown },
 ];
+
+const FOLDER_TINT = {
+  green: {
+    text: "text-emerald-700",
+    bg: "bg-emerald-50",
+    ring: "ring-emerald-200/70",
+  },
+  amber: {
+    text: "text-amber-700",
+    bg: "bg-amber-50",
+    ring: "ring-amber-200/70",
+  },
+  blue: {
+    text: "text-sky-700",
+    bg: "bg-sky-50",
+    ring: "ring-sky-200/70",
+  },
+  violet: {
+    text: "text-violet-700",
+    bg: "bg-violet-50",
+    ring: "ring-violet-200/70",
+  },
+  neutral: {
+    text: "text-muted-foreground",
+    bg: "bg-muted/60",
+    ring: "ring-border",
+  },
+} as const;
 
 const ROLE_HEADINGS = {
   student: {
@@ -230,7 +260,7 @@ export default function DashboardPage() {
     if (activeFolder) {
       result = result.filter((f) => f.folderId === activeFolder.id);
     }
-    if (kind !== "all") {
+    if (kind !== "all" && kind !== "folder") {
       result = result.filter((f) => f.kind === kind);
     }
     if (search) {
@@ -271,9 +301,9 @@ export default function DashboardPage() {
     return { saved, original, percent };
   }, [files]);
 
-  const fileCountsByFolder = useMemo(() => {
-    const counts: Record<string, number> = {};
-    if (!allFiles || !allFolders) return counts;
+  const folderMetricsByFolder = useMemo(() => {
+    const metrics: Record<string, { count: number; originalBytes: number; savedBytes: number }> = {};
+    if (!allFiles || !allFolders) return metrics;
 
     const childFoldersByParent = new Map<string, string[]>();
     for (const folder of allFolders) {
@@ -284,40 +314,101 @@ export default function DashboardPage() {
       childFoldersByParent.set(parentFolderId, siblings);
     }
 
-    const directFileCounts = new Map<string, number>();
+    const directFileMetrics = new Map<string, { count: number; originalBytes: number; savedBytes: number }>();
     for (const file of allFiles) {
       if (!file.folderId) continue;
-      directFileCounts.set(file.folderId, (directFileCounts.get(file.folderId) ?? 0) + 1);
+      const current = directFileMetrics.get(file.folderId) ?? {
+        count: 0,
+        originalBytes: 0,
+        savedBytes: 0,
+      };
+      current.count += 1;
+      current.originalBytes += file.originalBytes;
+      current.savedBytes += (file.originalBytes - file.storedBytes);
+      directFileMetrics.set(file.folderId, current);
     }
 
-    const folderCountCache = new Map<string, number>();
-    const countFolderFiles = (folderId: string): number => {
-      const cached = folderCountCache.get(folderId);
+    const folderMetricsCache = new Map<string, { count: number; originalBytes: number; savedBytes: number }>();
+    const collectFolderMetrics = (folderId: string): { count: number; originalBytes: number; savedBytes: number } => {
+      const cached = folderMetricsCache.get(folderId);
       if (cached !== undefined) return cached;
 
-      let total = directFileCounts.get(folderId) ?? 0;
+      const direct = directFileMetrics.get(folderId) ?? {
+        count: 0,
+        originalBytes: 0,
+        savedBytes: 0,
+      };
+      let total = {
+        count: direct.count,
+        originalBytes: direct.originalBytes,
+        savedBytes: direct.savedBytes,
+      };
+
       for (const childFolderId of childFoldersByParent.get(folderId) ?? []) {
-        total += countFolderFiles(childFolderId);
+        const child = collectFolderMetrics(childFolderId);
+        total = {
+          count: total.count + child.count,
+          originalBytes: total.originalBytes + child.originalBytes,
+          savedBytes: total.savedBytes + child.savedBytes,
+        };
       }
 
-      folderCountCache.set(folderId, total);
+      folderMetricsCache.set(folderId, total);
       return total;
     };
 
     for (const folder of allFolders) {
-      counts[folder.id] = countFolderFiles(folder.id);
+      metrics[folder.id] = collectFolderMetrics(folder.id);
     }
 
-    return counts;
+    return metrics;
   }, [allFiles, allFolders]);
+
+  const fileCountsByFolder = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const [folderId, metric] of Object.entries(folderMetricsByFolder)) {
+      counts[folderId] = metric.count;
+    }
+    return counts;
+  }, [folderMetricsByFolder]);
+
+  const displayedFolders = useMemo(() => {
+    if (!folders) return null;
+
+    let result = folders;
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter((folder) => folder.name.toLowerCase().includes(q));
+    }
+
+    const sorted = [...result];
+    if (sort === "recent") {
+      sorted.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    } else if (sort === "largest") {
+      sorted.sort(
+        (a, b) =>
+          (folderMetricsByFolder[b.id]?.originalBytes ?? 0) -
+          (folderMetricsByFolder[a.id]?.originalBytes ?? 0)
+      );
+    } else {
+      sorted.sort(
+        (a, b) =>
+          (folderMetricsByFolder[b.id]?.savedBytes ?? 0) -
+          (folderMetricsByFolder[a.id]?.savedBytes ?? 0)
+      );
+    }
+
+    return sorted;
+  }, [folders, search, sort, folderMetricsByFolder]);
 
   const sortLabel =
     SORT_OPTIONS.find((o) => o.value === sort)?.label ?? "Most recent";
   const kindLabel =
     KIND_OPTIONS.find((o) => o.value === kind)?.label ?? "All types";
 
-  const showFoldersStrip =
-    folders !== null && folders.length > 0;
+  const showFoldersStrip = displayedFolders !== null && displayedFolders.length > 0;
+  const showFoldersSection = kind === "all" || kind === "folder";
+  const showFilesSection = kind !== "folder";
 
   const canDeleteActiveFolder =
     activeFolder !== null &&
@@ -444,7 +535,7 @@ export default function DashboardPage() {
         <p className="text-[13.5px] leading-snug text-muted-foreground">
           {heading.sub}
         </p>
-        {files && (
+        {showFilesSection && files && (
           <div className="mt-2.5 flex items-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11.5px] font-medium text-primary shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]">
               <span className="flex items-center gap-1.5">
@@ -563,6 +654,7 @@ export default function DashboardPage() {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button
@@ -600,52 +692,43 @@ export default function DashboardPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <div
+            role="group"
+            aria-label="View mode"
+            className="ml-1 flex items-center gap-0.5 rounded-lg border border-border/70 bg-[hsl(48_25%_98%)] p-0.5"
+          >
+            <button
+              type="button"
+              aria-label="Grid view"
+              aria-pressed={view === "grid"}
+              onClick={() => setView("grid")}
+              className={cn(
+                "flex size-7 items-center justify-center rounded-md transition-colors duration-150",
+                view === "grid"
+                  ? "bg-white text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <LayoutGrid className="size-[14px]" strokeWidth={1.8} />
+            </button>
+            <button
+              type="button"
+              aria-label="List view"
+              aria-pressed={view === "list"}
+              onClick={() => setView("list")}
+              className={cn(
+                "flex size-7 items-center justify-center rounded-md transition-colors duration-150",
+                view === "list"
+                  ? "bg-white text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              )}
+            >
+              <List className="size-[14px]" strokeWidth={1.8} />
+            </button>
+          </div>
         </div>
       </div>
-
-      {/* Folders grid */}
-      {showFoldersStrip && (() => {
-        const MAX_VISIBLE_ROWS = 2;
-        const MAX_VISIBLE = folderGridColumns * MAX_VISIBLE_ROWS;
-        const hasMore = folders!.length > MAX_VISIBLE;
-        const visibleFolders = hasMore && !foldersExpanded
-          ? folders!.slice(0, MAX_VISIBLE)
-          : folders!;
-
-        return (
-          <section className="flex flex-col gap-2">
-            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-              Folders
-            </span>
-
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-              {visibleFolders.map((folder) => (
-                <FolderTile
-                  key={folder.id}
-                  folder={folder}
-                  fileCount={fileCountsByFolder[folder.id] ?? 0}
-                  selected={selectedFolderIds.has(folder.id)}
-                  onSelectChange={(c) => toggleFolderSelection(folder.id, c)}
-                  onClick={() => handleOpenFolder(folder)}
-                />
-              ))}
-            </div>
-
-            {hasMore && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setFoldersExpanded((v) => !v);
-                }}
-                className="self-start text-[12px] font-medium text-primary underline-offset-4 transition-colors hover:underline"
-              >
-                {foldersExpanded ? "View less" : "View more"}
-              </button>
-            )}
-          </section>
-        );
-      })()}
 
       {/* Filters row */}
       <div className="flex w-full flex-wrap items-center gap-2">
@@ -722,133 +805,230 @@ export default function DashboardPage() {
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-
-        {/* View toggle */}
-        <div
-          role="group"
-          aria-label="View mode"
-          className="ml-auto flex items-center gap-0.5 rounded-lg border border-border/70 bg-[hsl(48_25%_98%)] p-0.5"
-        >
-          <button
-            type="button"
-            aria-label="Grid view"
-            aria-pressed={view === "grid"}
-            onClick={() => setView("grid")}
-            className={cn(
-              "flex size-7 items-center justify-center rounded-md transition-colors duration-150",
-              view === "grid"
-                ? "bg-white text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <LayoutGrid className="size-[14px]" strokeWidth={1.8} />
-          </button>
-          <button
-            type="button"
-            aria-label="List view"
-            aria-pressed={view === "list"}
-            onClick={() => setView("list")}
-            className={cn(
-              "flex size-7 items-center justify-center rounded-md transition-colors duration-150",
-              view === "list"
-                ? "bg-white text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <List className="size-[14px]" strokeWidth={1.8} />
-          </button>
-        </div>
       </div>
 
-      {/* Results */}
-      {files === null ? (
-        view === "grid" ? (
-          <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton
-                key={i}
-                className="h-[206px] rounded-xl"
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <Skeleton key={i} className="h-[48px] rounded-lg" />
-            ))}
-          </div>
-        )
-      ) : files.length === 0 ? (
+      {/* Folders grid */}
+      {showFoldersSection && showFoldersStrip && (() => {
+        const MAX_VISIBLE_ROWS = 2;
+        const MAX_VISIBLE = view === "grid" ? folderGridColumns * MAX_VISIBLE_ROWS : 8;
+        const hasMore = displayedFolders!.length > MAX_VISIBLE;
+        const visibleFolders = hasMore && !foldersExpanded
+          ? displayedFolders!.slice(0, MAX_VISIBLE)
+          : displayedFolders!;
+
+        return (
+          <section className="flex flex-col gap-2">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              Folders
+            </span>
+
+            {view === "grid" ? (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {visibleFolders.map((folder) => (
+                  <FolderTile
+                    key={folder.id}
+                    folder={folder}
+                    fileCount={fileCountsByFolder[folder.id] ?? 0}
+                    selected={selectedFolderIds.has(folder.id)}
+                    onSelectChange={(c) => toggleFolderSelection(folder.id, c)}
+                    onClick={() => handleOpenFolder(folder)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {visibleFolders.map((folder) => {
+                  const selected = selectedFolderIds.has(folder.id);
+                  const count = fileCountsByFolder[folder.id] ?? 0;
+                  const tint = FOLDER_TINT[folder.color];
+                  return (
+                    <button
+                      key={folder.id}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!selected) {
+                          toggleFolderSelection(folder.id, true);
+                          return;
+                        }
+                        handleOpenFolder(folder);
+                      }}
+                      className={cn(
+                        "group/folder-row flex w-full items-center gap-3 rounded-lg border bg-card px-3 py-2 text-left",
+                        "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
+                        "transition-colors duration-150",
+                        selected
+                          ? "border-primary/40 bg-primary/[0.03]"
+                          : "border-border/70 hover:border-primary/30"
+                      )}
+                    >
+                      <span className={cn(
+                        "flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-colors duration-200",
+                        tint.bg,
+                        tint.ring,
+                        tint.text
+                      )}>
+                        <FolderIcon className="size-[14px]" strokeWidth={1.8} />
+                      </span>
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate text-[13.5px] font-medium leading-tight text-foreground">
+                          {folder.name}
+                        </span>
+                        <span className="mt-0.5 text-[11.5px] text-muted-foreground tabular-nums">
+                          {count} {count === 1 ? "file" : "files"}
+                        </span>
+                      </span>
+                      {selected ? (
+                        <span className="flex size-5 items-center justify-center rounded-full bg-primary text-white">
+                          <Check className="size-[12px]" strokeWidth={2.8} />
+                        </span>
+                      ) : (
+                        <ChevronRight className="size-[14px] text-muted-foreground/60" strokeWidth={1.8} />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {hasMore && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setFoldersExpanded((v) => !v);
+                }}
+                className="self-start text-[12px] font-medium text-primary underline-offset-4 transition-colors hover:underline"
+              >
+                {foldersExpanded ? "View less" : "View more"}
+              </button>
+            )}
+          </section>
+        );
+      })()}
+
+      {showFoldersSection && !showFoldersStrip && (
         <EmptyState
           icon={<FolderOpen />}
-          title={
-            activeFolder
-              ? `Nothing in '${activeFolder.name}' yet`
-              : filtersActive
-                ? "No files match your filters"
-                : emptyCopy.title
-          }
+          title={search ? "No folders match your search" : "No folders yet"}
           description={
-            activeFolder
-              ? "Upload a file or move existing files into this folder."
-              : filtersActive
-                ? "Try clearing the search or switching file type."
-                : emptyCopy.description
+            search
+              ? "Try clearing the search or selecting another type."
+              : "Create a folder to organize your archive."
           }
           action={
             <Button
               type="button"
               size="sm"
-              onClick={openUpload}
+              onClick={openNewFolder}
               className="h-8 gap-1.5 rounded-lg border-transparent bg-[#2d8a56] px-3 text-[13px] font-medium text-white hover:bg-[#247045]"
             >
-              <Upload className="size-[14px]" />
-              <span>
-                {activeFolder
-                  ? "Upload a file"
-                  : filtersActive
-                    ? "Upload a file"
-                    : emptyCopy.cta}
-              </span>
+              <FolderOpen className="size-[14px]" />
+              <span>New folder</span>
             </Button>
           }
         />
-      ) : view === "grid" ? (
+      )}
+
+      {showFilesSection && (
         <>
-          <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {displayedFiles!.map((file) => (
-              <FileCard 
-                key={file.id} 
-                file={file} 
-                folderTrail={folderTrail}
-                selected={selectedFileIds.has(file.id)}
-                onSelectChange={(c) => toggleSelection(file.id, c)}
-              />
-            ))}
+          <div className="flex items-center">
+            <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+              Files
+            </span>
           </div>
-          {files && displayLimit < files.length && (
-            <div ref={lastElementRef} className="mt-8 flex items-center justify-center pb-8">
-              <Loader2 className="size-6 animate-spin text-primary/70" />
-            </div>
-          )}
-        </>
-      ) : (
-        <>
-          <div className="space-y-1.5">
-            {displayedFiles!.map((file) => (
-              <FileRow 
-                key={file.id} 
-                file={file} 
-                folderTrail={folderTrail}
-                selected={selectedFileIds.has(file.id)}
-                onSelectChange={(c) => toggleSelection(file.id, c)}
-              />
-            ))}
-          </div>
-          {files && displayLimit < files.length && (
-            <div ref={lastElementRef} className="mt-8 flex items-center justify-center pb-8">
-              <Loader2 className="size-6 animate-spin text-primary/70" />
-            </div>
+
+          {/* Results */}
+          {files === null ? (
+            view === "grid" ? (
+              <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton
+                    key={i}
+                    className="h-[206px] rounded-xl"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="h-[48px] rounded-lg" />
+                ))}
+              </div>
+            )
+          ) : files.length === 0 ? (
+            <EmptyState
+              icon={<FolderOpen />}
+              title={
+                activeFolder
+                  ? `Nothing in '${activeFolder.name}' yet`
+                  : filtersActive
+                    ? "No files match your filters"
+                    : emptyCopy.title
+              }
+              description={
+                activeFolder
+                  ? "Upload a file or move existing files into this folder."
+                  : filtersActive
+                    ? "Try clearing the search or switching file type."
+                    : emptyCopy.description
+              }
+              action={
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={openUpload}
+                  className="h-8 gap-1.5 rounded-lg border-transparent bg-[#2d8a56] px-3 text-[13px] font-medium text-white hover:bg-[#247045]"
+                >
+                  <Upload className="size-[14px]" />
+                  <span>
+                    {activeFolder
+                      ? "Upload a file"
+                      : filtersActive
+                        ? "Upload a file"
+                        : emptyCopy.cta}
+                  </span>
+                </Button>
+              }
+            />
+          ) : view === "grid" ? (
+            <>
+              <div className="grid auto-rows-fr grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {displayedFiles!.map((file) => (
+                  <FileCard
+                    key={file.id}
+                    file={file}
+                    folderTrail={folderTrail}
+                    selected={selectedFileIds.has(file.id)}
+                    onSelectChange={(c) => toggleSelection(file.id, c)}
+                  />
+                ))}
+              </div>
+              {files && displayLimit < files.length && (
+                <div ref={lastElementRef} className="mt-8 flex items-center justify-center pb-8">
+                  <Loader2 className="size-6 animate-spin text-primary/70" />
+                </div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                {displayedFiles!.map((file) => (
+                  <FileRow
+                    key={file.id}
+                    file={file}
+                    folderTrail={folderTrail}
+                    selected={selectedFileIds.has(file.id)}
+                    onSelectChange={(c) => toggleSelection(file.id, c)}
+                  />
+                ))}
+              </div>
+              {files && displayLimit < files.length && (
+                <div ref={lastElementRef} className="mt-8 flex items-center justify-center pb-8">
+                  <Loader2 className="size-6 animate-spin text-primary/70" />
+                </div>
+              )}
+            </>
           )}
         </>
       )}
