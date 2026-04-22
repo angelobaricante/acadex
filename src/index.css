@@ -38,9 +38,12 @@
     line-height: 1.5;
   }
 
-  /* Accessibility: user-selectable font scale applied to <html>. */
-  html.text-scale-large body { font-size: 15.75px; }
-  html.text-scale-xl body    { font-size: 17.5px;  }
+  /* Accessibility: user-selectable font scale applied to <html>.
+     Uses `zoom` so hardcoded pixel sizes (text-[13px], icon sizes, etc.)
+     scale uniformly alongside rem-based typography. Supported in Chromium,
+     Safari, and Firefox 126+. */
+  html.text-scale-large { zoom: 1.125; }
+  html.text-scale-xl    { zoom: 1.25;  }
 
   * {
     @apply border-border;
