@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import UploadDialog from "@/components/shared/UploadDialog";
 import ShareDialog from "@/components/shared/ShareDialog";
 import NewFolderDialog from "@/components/shared/NewFolderDialog";
+import FolderUploadDialog from "@/components/shared/FolderUploadDialog";
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
       <UploadDialog />
       <ShareDialog />
       <NewFolderDialog />
+      <FolderUploadDialog />
       <Toaster />
     </>
   );

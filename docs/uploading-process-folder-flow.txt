@@ -1,0 +1,42 @@
+AcaDex Uploading Process (File vs Folder)
+Date: 2026-04-22
+
+1) Single-file upload flow
+- Entry point: uploadFile(file, targetFolderId) in src/lib/api.ts.
+- The file is compressed via compressFile.
+- Compressed output is uploaded to Google Drive via driveUpload (flat upload path).
+- Metadata is persisted to Supabase files table via createFileRecord.
+- In-memory file state is updated for UI.
+
+2) Folder upload flow (implemented)
+- Entry point: uploadFolder(fileList, onProgress) in src/lib/api.ts.
+- Input files are expected to include webkitRelativePath from folder selection.
+- Root folder name is derived from the first relative path segment.
+- Root folder is created in Google Drive using createDriveFolder.
+- Matching root folder record is created in Supabase using createFolderRecord.
+- A folder cache maps relative path -> { driveId, supabaseId } to prevent duplicate folder creation.
+- For each file:
+  - Parent folder path is resolved/created recursively in Drive and Supabase.
+  - File is compressed via compressFile.
+  - Compressed file is uploaded to Drive folder via uploadFileToDrive.
+  - Supabase file record is inserted via createFileRecord with resolved folderId.
+  - Progress callback is emitted per file.
+- Upload continues even if individual files fail.
+- Returned summary includes succeeded, failed, totalOriginalBytes, totalStoredBytes.
+
+3) Folder upload UI flow
+- Entry point: FolderUploadDialog handleFiles in src/components/shared/FolderUploadDialog.tsx.
+- Dialog calls uploadFolder directly instead of per-file uploadFile + moveFileToFolder.
+- Progress bar is driven by uploadFolder callback.
+- Summary toast is shown for successful files.
+- Error toast is shown when one or more files fail.
+- Upload and folder versions are bumped to refresh UI.
+
+4) Why this fixes the folder issue
+- Previous behavior uploaded every file independently and ignored folder hierarchy.
+- New behavior reconstructs and persists the folder tree before uploading file nodes.
+- File records are saved with the correct folder association.
+
+5) Known limitations
+- Drag-and-drop folder path fidelity depends on browser DataTransfer behavior.
+- Folder selection through the webkitdirectory input provides the most reliable webkitRelativePath data.

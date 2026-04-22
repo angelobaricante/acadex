@@ -1,61 +1,125 @@
-import { Link } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
   FileIcon,
   FileImage,
   FileText,
   FileVideo,
+  Presentation,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { formatBytes, formatDate } from "@/lib/format";
-import type { ArchivedFile, FileKind } from "@/lib/types";
+import type { ArchivedFile, FileKind, Folder } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useShellSearch } from "@/components/layout/AppShell";
 import SavingsBadge from "./SavingsBadge";
 import FileActionsMenu from "./FileActionsMenu";
 
 interface FileCardProps {
   file: ArchivedFile;
+  folderTrail?: Folder[];
+  selected?: boolean;
+  onSelectChange?: (checked: boolean, shiftKey?: boolean) => void;
+  onOpenFile?: (file: ArchivedFile) => void;
 }
 
-function iconFor(kind: FileKind): LucideIcon {
+function fileTypeConfig(kind: FileKind): { Icon: LucideIcon, color: string, bg: string } {
   switch (kind) {
     case "pdf":
+      return { Icon: FileText, color: "text-red-500", bg: "bg-red-50/80" };
     case "docx":
+      return { Icon: FileText, color: "text-blue-500", bg: "bg-blue-50/80" };
     case "pptx":
-      return FileText;
+      return { Icon: Presentation, color: "text-orange-500", bg: "bg-orange-50/80" };
     case "image":
-      return FileImage;
+      return { Icon: FileImage, color: "text-emerald-500", bg: "bg-emerald-50/80" };
     case "video":
-      return FileVideo;
+      return { Icon: FileVideo, color: "text-purple-500", bg: "bg-purple-50/80" };
     default:
-      return FileIcon;
+      return { Icon: FileIcon, color: "text-slate-500", bg: "bg-slate-50/80" };
   }
 }
 
-export default function FileCard({ file }: FileCardProps) {
-  const Icon = iconFor(file.kind);
+export default function FileCard({ file, folderTrail, selected, onSelectChange, onOpenFile }: FileCardProps) {
+  const navigate = useNavigate();
+  const { setSearch } = useShellSearch();
+  const config = fileTypeConfig(file.kind);
+  const Icon = config.Icon;
   const visibleTags = file.tags.slice(0, 1);
   const overflow = file.tags.length - visibleTags.length;
 
+  const fileNameWithoutExt = file.name.includes('.') ? file.name.replace(/\.[^/.]+$/, "") : file.name;
+  const extension = file.name.includes('.') ? file.name.split('.').pop()?.toUpperCase() : "";
+
+  const handleClick = (e: React.MouseEvent | React.KeyboardEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const shiftKey = "shiftKey" in e ? e.shiftKey : false;
+    if (shiftKey) {
+      onSelectChange?.(!selected, true);
+      return;
+    }
+    if (!selected) onSelectChange?.(true, false);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (onOpenFile) {
+      onOpenFile(file);
+      return;
+    }
+    navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (onOpenFile) {
+        onOpenFile(file);
+        return;
+      }
+      navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
+      return;
+    }
+    if (e.key === " ") {
+      handleClick(e);
+    }
+  };
+
+  const handleTagClick = (e: React.MouseEvent, tag: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSearch(tag);
+  };
+
   return (
     <div className="group/file-card relative h-full">
-      <Link
-      to={`/file/${file.id}`}
-      data-slot="file-card"
-      className={cn(
-        "relative flex h-full flex-col overflow-hidden rounded-xl border border-border/70 bg-card",
-        "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
-        "transition-[transform,box-shadow,border-color] duration-200 ease-out",
-        "hover:-translate-y-px hover:border-primary/20",
-        "hover:shadow-[0_1px_0_rgba(16,24,40,0.03),0_8px_20px_-8px_rgba(16,24,40,0.10)]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-      )}
-    >
-      {/* Top hairline — tints primary on hover */}
-      <span
-        aria-hidden="true"
-        className="absolute inset-x-0 top-0 h-px bg-border/80 transition-colors duration-200 group-hover/file-card:bg-primary/40"
-      />
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
+        onKeyDown={handleKeyDown}
+        data-slot="file-card"
+        className={cn(
+          "relative flex h-full flex-col overflow-hidden rounded-xl border bg-card",
+          "shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_3px_rgba(16,24,40,0.04)]",
+          "transition-[border-color,background-color] duration-200 ease-out",
+          selected ? "border-primary/40 bg-primary/[0.02]" : "border-border/70 hover:border-primary/20",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        )}
+      >
+        {/* Top hairline — tints primary on hover */}
+        <span
+          aria-hidden="true"
+          className={cn(
+            "absolute inset-x-0 top-0 h-px transition-colors duration-200",
+            selected ? "bg-primary/40" : "bg-border/80 group-hover/file-card:bg-primary/40"
+          )}
+        />
 
       {/* Thumbnail: soft radial wash + faint grid texture */}
       <div
@@ -72,16 +136,27 @@ export default function FileCard({ file }: FileCardProps) {
             "[background-size:16px_16px]"
           )}
         />
-        <div className="relative flex size-11 items-center justify-center rounded-lg bg-white/80 text-muted-foreground shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_2px_rgba(16,24,40,0.04)] ring-1 ring-border/70 transition-colors duration-200 group-hover/file-card:text-primary">
-          <Icon className="size-[20px]" strokeWidth={1.6} />
+        <div className={cn(
+          "relative flex size-11 items-center justify-center rounded-lg shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_2px_rgba(16,24,40,0.04)] ring-1 ring-border/70 transition-colors duration-200",
+          config.bg,
+          config.color
+        )}>
+          <Icon className="size-[20px]" strokeWidth={1.8} />
         </div>
       </div>
 
       {/* Body */}
       <div className="flex flex-1 flex-col gap-2.5 p-3">
-        <p className="line-clamp-2 min-h-[2.55em] text-[14px] font-medium leading-snug text-foreground">
-          {file.name}
-        </p>
+        <div className="flex items-start justify-between gap-1.5 min-h-[2.55em]">
+          <p className="line-clamp-2 text-[14px] font-medium leading-snug text-foreground">
+            {fileNameWithoutExt}
+          </p>
+          {extension && (
+            <Badge variant="outline" className={cn("mt-0.5 h-[18px] shrink-0 rounded-full px-1.5 text-[9.5px] font-bold uppercase tracking-wider border-transparent mix-blend-multiply", config.bg, config.color)}>
+              {extension}
+            </Badge>
+          )}
+        </div>
 
         <div className="flex items-center justify-between text-[11.5px] text-muted-foreground tabular-nums">
           <span>{formatBytes(file.storedBytes)}</span>
@@ -94,7 +169,8 @@ export default function FileCard({ file }: FileCardProps) {
             <Badge
               key={tag}
               variant="secondary"
-              className="h-5 min-w-0 max-w-[88px] truncate px-1.5 text-[11px] font-normal text-muted-foreground"
+              onClick={(e) => handleTagClick(e, tag)}
+              className="h-5 min-w-0 max-w-[88px] cursor-pointer rounded-full truncate px-1.5 text-[11px] font-normal text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
             >
               {tag}
             </Badge>
@@ -106,8 +182,21 @@ export default function FileCard({ file }: FileCardProps) {
           )}
         </div>
       </div>
-      </Link>
-      <FileActionsMenu file={file} variant="card" />
+      </div>
+      <FileActionsMenu file={file} variant="card" folderTrail={folderTrail} onOpenFile={onOpenFile} />
+
+      <div 
+        className={cn(
+          "absolute left-2.5 top-2.5 z-10 transition-opacity duration-200",
+          selected ? "opacity-100" : "opacity-0 group-hover/file-card:opacity-100"
+        )}
+      >
+        <Checkbox 
+          checked={selected}
+          onCheckedChange={(checked) => onSelectChange?.(checked === true)}
+          className="border-primary/30 bg-white/60 shadow-sm backdrop-blur-md data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-white"
+        />
+      </div>
     </div>
   );
 }

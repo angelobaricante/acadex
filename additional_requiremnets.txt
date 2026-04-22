@@ -1,0 +1,5 @@
+npm install @supabase/supabase-js @supabase/ssr
+npm install @types/google.accounts --save-dev
+npm install pdf-lib fflate
+npm install --save-dev electron electron-builder typescript
+npm install --save-dev @types/node

@@ -13,6 +13,7 @@ export const useSessionStore = create<SessionState>((set) => ({
 
 interface UIState {
   uploadDialogOpen: boolean;
+  folderUploadDialogOpen: boolean;
   shareDialog: { open: boolean; fileId?: string };
   uploadsVersion: number;
   newFolderDialogOpen: boolean;
@@ -20,6 +21,8 @@ interface UIState {
   currentFolderId: string | null;
   openUpload: () => void;
   closeUpload: () => void;
+  openFolderUpload: () => void;
+  closeFolderUpload: () => void;
   openShare: (fileId: string) => void;
   closeShare: () => void;
   bumpUploadsVersion: () => void;
@@ -31,6 +34,7 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set) => ({
   uploadDialogOpen: false,
+  folderUploadDialogOpen: false,
   shareDialog: { open: false },
   uploadsVersion: 0,
   newFolderDialogOpen: false,
@@ -38,6 +42,8 @@ export const useUIStore = create<UIState>((set) => ({
   currentFolderId: null,
   openUpload: () => set({ uploadDialogOpen: true }),
   closeUpload: () => set({ uploadDialogOpen: false }),
+  openFolderUpload: () => set({ folderUploadDialogOpen: true }),
+  closeFolderUpload: () => set({ folderUploadDialogOpen: false }),
   openShare: (fileId) => set({ shareDialog: { open: true, fileId } }),
   closeShare: () => set({ shareDialog: { open: false } }),
   bumpUploadsVersion: () => set((s) => ({ uploadsVersion: s.uploadsVersion + 1 })),

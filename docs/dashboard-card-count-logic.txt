@@ -1,0 +1,14 @@
+Why the dashboard can show exactly 20 cards
+
+The dashboard card count is driven by the number of file records returned by listFiles, then rendered one card per file.
+
+Source of truth and render path:
+1. Mock dataset defines 20 files in src/lib/mockData.ts.
+2. In-memory files state is initialized from that dataset in src/lib/api.ts.
+3. listFiles returns from Drive only when an access token exists; otherwise it falls back to in-memory files in src/lib/api.ts.
+4. Dashboard fetches via listFiles and stores results in allFiles in src/features/dashboard/DashboardPage.tsx.
+5. Grid rendering maps files to cards one-to-one in src/features/dashboard/DashboardPage.tsx.
+
+Why it may be all 20 specifically:
+- ownerId filtering is only applied for student users; for faculty/admin ownerId is undefined in src/features/dashboard/DashboardPage.tsx, so all available files can be shown.
+- With no active filters (kind/search/folder), the full returned set is rendered.

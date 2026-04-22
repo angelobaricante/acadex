@@ -9,12 +9,18 @@ import type {
   SharePermission,
   User,
 } from "./types";
+import { driveDelete, driveList, driveUpload } from "./driveApi";
+import { createDriveFolder, uploadFileToDrive } from "./drive/driveApi";
+import { getAccessToken, signInWithGoogle, signOutFromGoogle } from "./googleAuth";
+import { compressFile } from "./compression/compressFile";
+import { createFileRecord } from "./supabase/fileService";
+import { createFolderRecord } from "./supabase/folderService";
+import { supabase } from "./supabaseClient";
 import {
   mockFiles,
   mockFolders,
   mockImpact,
   mockShareLinks,
-  mockUsers,
 } from "./mockData";
 
 const LATENCY_MIN = 200;
@@ -27,6 +33,42 @@ function sleep(): Promise<void> {
 
 function apiError(code: string, message: string): { code: string; message: string } {
   return { code, message };
+}
+
+function isUuid(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+const uploadedByFallbackByScope = new Map<string, string>();
+
+function getStableUploadedByFallback(scopeId?: string): string {
+  const scope = scopeId && scopeId.length > 0 ? scopeId : "anonymous";
+  const storageKey = `acadex_uploaded_by_uuid:${scope}`;
+
+  const inMemory = uploadedByFallbackByScope.get(scope);
+  if (inMemory && isUuid(inMemory)) return inMemory;
+
+  try {
+    const fromSession = sessionStorage.getItem(storageKey);
+    if (fromSession && isUuid(fromSession)) {
+      uploadedByFallbackByScope.set(scope, fromSession);
+      return fromSession;
+    }
+  } catch {
+    // Ignore storage access issues and fall back to in-memory UUID cache.
+  }
+
+  const generated = crypto.randomUUID();
+  uploadedByFallbackByScope.set(scope, generated);
+
+  try {
+    sessionStorage.setItem(storageKey, generated);
+  } catch {
+    // Ignore storage access issues and keep in-memory UUID cache.
+  }
+
+  return generated;
 }
 
 // --- In-memory state (resettable for tests) ---
@@ -44,25 +86,35 @@ export function __resetApiStateForTests(): void {
 
 // --- Auth ---
 export async function mockSignIn(role: Role): Promise<User> {
-  await sleep();
-  const user =
-    role === "student"
-      ? mockUsers.student_maria
-      : role === "faculty"
-        ? mockUsers.faculty_cruz
-        : mockUsers.admin_reyes;
+  const profile = await signInWithGoogle();
+
+  const user: User = {
+    id: profile.sub,
+    name: profile.name,
+    email: profile.email,
+    avatarUrl: profile.picture,
+    role,
+  };
+
+  sessionStorage.setItem("acadex_user", JSON.stringify(user));
   currentUser = user;
   return user;
 }
 
 export async function signOut(): Promise<void> {
-  await sleep();
+  signOutFromGoogle();
+  sessionStorage.removeItem("acadex_user");
   currentUser = null;
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  await sleep();
-  return currentUser;
+  if (currentUser) return currentUser;
+  const saved = sessionStorage.getItem("acadex_user");
+  if (saved) {
+    currentUser = JSON.parse(saved) as User;
+    return currentUser;
+  }
+  return null;
 }
 
 // --- Files ---
@@ -75,9 +127,43 @@ export interface ListFilesParams {
   sort?: "recent" | "largest" | "most_saved";
 }
 
+export interface FolderUploadSummary {
+  succeeded: number;
+  failed: number;
+  totalOriginalBytes: number;
+  totalStoredBytes: number;
+}
+
 export async function listFiles(params: ListFilesParams = {}): Promise<ArchivedFile[]> {
-  await sleep();
-  let result = [...files];
+  let baseFiles: ArchivedFile[];
+  let loadedFromDrive = false;
+  try {
+    getAccessToken();
+    baseFiles = await driveList(params.query);
+    loadedFromDrive = true;
+  } catch {
+    baseFiles = [...files];
+  }
+
+  if (loadedFromDrive) {
+    const previousById = new Map(files.map((file) => [file.id, file]));
+    baseFiles = baseFiles.map((driveFile) => {
+      const previous = previousById.get(driveFile.id);
+      if (!previous) return driveFile;
+
+      return {
+        ...driveFile,
+        ownerId: previous.ownerId,
+        originalBytes: previous.originalBytes,
+        storedBytes: previous.storedBytes,
+        compressionRatio: previous.compressionRatio,
+        tags: previous.tags,
+        folderId: previous.folderId,
+      };
+    });
+  }
+
+  let result = [...baseFiles];
   if (params.kind) result = result.filter((f) => f.kind === params.kind);
   if (params.ownerId) result = result.filter((f) => f.ownerId === params.ownerId);
   if (params.folderId === null) {
@@ -89,12 +175,6 @@ export async function listFiles(params: ListFilesParams = {}): Promise<ArchivedF
     const t = params.tag.toLowerCase();
     result = result.filter((f) => f.tags.some((tag) => tag.toLowerCase() === t));
   }
-  if (params.query) {
-    const q = params.query.toLowerCase();
-    result = result.filter(
-      (f) => f.name.toLowerCase().includes(q) || f.tags.some((t) => t.toLowerCase().includes(q))
-    );
-  }
   const sort = params.sort ?? "recent";
   if (sort === "recent") {
     result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -105,6 +185,7 @@ export async function listFiles(params: ListFilesParams = {}): Promise<ArchivedF
       (a, b) => b.originalBytes - b.storedBytes - (a.originalBytes - a.storedBytes)
     );
   }
+  files = result.map((f) => ({ ...f }));
   return result;
 }
 
@@ -115,48 +196,269 @@ export async function getFile(id: string): Promise<ArchivedFile> {
   return file;
 }
 
-function detectKind(file: File): { kind: FileKind; mime: string } {
-  const mime = file.type || "application/octet-stream";
-  if (mime === "application/pdf") return { kind: "pdf", mime };
-  if (mime.startsWith("image/")) return { kind: "image", mime };
-  if (mime.startsWith("video/")) return { kind: "video", mime };
-  if (file.name.endsWith(".docx")) return { kind: "docx", mime };
-  if (file.name.endsWith(".pptx")) return { kind: "pptx", mime };
-  return { kind: "other", mime };
+export async function uploadFile(file: File, targetFolderId: string | null = null): Promise<ArchivedFile> {
+  const compression = await compressFile(file);
+  const archived = await driveUpload(compression.compressedFile);
+
+  const compressionRatio =
+    compression.originalSize > 0
+      ? (compression.originalSize - compression.compressedSize) / compression.originalSize
+      : 0;
+
+  const archivedWithCompression: ArchivedFile = {
+    ...archived,
+    originalBytes: compression.originalSize,
+    storedBytes: compression.compressedSize,
+    compressionRatio,
+    folderId: targetFolderId,
+  };
+
+  const {
+    data: { user: supabaseUser },
+  } = await supabase.auth.getUser();
+  const uploadedBy = isUuid(supabaseUser?.id)
+    ? supabaseUser!.id
+    : isUuid(currentUser?.id)
+      ? currentUser!.id
+      : getStableUploadedByFallback(currentUser?.id);
+
+  const folderIdForSupabase = isUuid(targetFolderId) ? targetFolderId : null;
+
+  await createFileRecord({
+    driveFileId: archivedWithCompression.id,
+    folderId: folderIdForSupabase,
+    name: archivedWithCompression.name,
+    mimeType: archivedWithCompression.mimeType,
+    originalSizeBytes: archivedWithCompression.originalBytes,
+    compressedSizeBytes: archivedWithCompression.storedBytes,
+    uploadedBy,
+  });
+
+  if (import.meta.env.DEV) {
+    const nowIso = new Date().toISOString();
+    console.info("[acadex:supabase:files:metadata]", {
+      drive_file_id: archivedWithCompression.id,
+      folder_id: folderIdForSupabase,
+      name: archivedWithCompression.name,
+      mime_type: archivedWithCompression.mimeType,
+      original_size_bytes: archivedWithCompression.originalBytes,
+      compressed_size_bytes: archivedWithCompression.storedBytes,
+      compression_ratio: archivedWithCompression.compressionRatio,
+      tags: archivedWithCompression.tags ?? null,
+      uploaded_by: uploadedBy,
+      uploaded_at: nowIso,
+      drive_synced_at: nowIso,
+      is_deleted_on_drive: false,
+    });
+  }
+
+  files = [archivedWithCompression, ...files.filter((f) => f.id !== archived.id)];
+  return archivedWithCompression;
 }
 
-export async function uploadFile(file: File): Promise<ArchivedFile> {
-  await sleep();
-  const { kind, mime } = detectKind(file);
-  const originalBytes = file.size;
-  const storedBytes = Math.round(originalBytes * (0.15 + Math.random() * 0.15));
-  const url = URL.createObjectURL(file);
-  const now = new Date().toISOString();
-  const uploader = currentUser?.id ?? "admin_reyes";
-  const archived: ArchivedFile = {
-    id: `upload_${Date.now()}`,
-    name: file.name,
-    kind,
-    mimeType: mime,
-    ownerId: uploader,
-    originalBytes,
-    storedBytes,
-    compressionRatio: (originalBytes - storedBytes) / originalBytes,
-    tags: ["Uploaded"],
-    createdAt: now,
-    updatedAt: now,
-    previewUrl: url,
-    downloadUrl: url,
+function detectKind(mimeType: string, name: string): FileKind {
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (name.toLowerCase().endsWith(".docx")) return "docx";
+  if (name.toLowerCase().endsWith(".pptx")) return "pptx";
+  return "other";
+}
+
+export async function uploadFolder(
+  fileList: FileList,
+  onProgress?: (done: number, total: number) => void
+): Promise<FolderUploadSummary> {
+  const filesToUpload = Array.from(fileList) as Array<File & { webkitRelativePath?: string }>;
+  if (filesToUpload.length === 0) {
+    return { succeeded: 0, failed: 0, totalOriginalBytes: 0, totalStoredBytes: 0 };
+  }
+
+  const {
+    data: { user: supabaseUser },
+  } = await supabase.auth.getUser();
+  const uploadedBy = isUuid(supabaseUser?.id)
+    ? supabaseUser!.id
+    : isUuid(currentUser?.id)
+      ? currentUser!.id
+      : getStableUploadedByFallback(currentUser?.id);
+
+  const firstPath = (filesToUpload[0].webkitRelativePath || filesToUpload[0].name).replace(/\\/g, "/");
+  const rootFolderName = firstPath.split("/").filter(Boolean)[0] || "Uploaded Folder";
+  const driveParentId = "root";
+
+  const rootDriveFolder = await createDriveFolder(rootFolderName, driveParentId, uploadedBy);
+  const rootSupabaseFolder = await createFolderRecord({
+    driveFolderId: rootDriveFolder.id,
+    name: rootFolderName,
+    parentFolderId: null,
+    createdBy: uploadedBy,
+  });
+
+  const nowIso = new Date().toISOString();
+  if (!folders.find((folder) => folder.id === rootSupabaseFolder.id)) {
+    folders = [
+      {
+        id: rootSupabaseFolder.id,
+        name: rootFolderName,
+        ownerId: uploadedBy,
+        color: "green",
+        createdAt: nowIso,
+        parentFolderId: null,
+      },
+      ...folders,
+    ];
+  }
+
+  const folderCache = new Map<string, { driveId: string; supabaseId: string }>();
+  folderCache.set(rootFolderName, {
+    driveId: rootDriveFolder.id,
+    supabaseId: rootSupabaseFolder.id,
+  });
+
+  const ensureFolder = async (folderPath: string): Promise<{ driveId: string; supabaseId: string }> => {
+    const normalized = folderPath.replace(/\\/g, "/").split("/").filter(Boolean).join("/");
+    if (!normalized) {
+      return {
+        driveId: rootDriveFolder.id,
+        supabaseId: rootSupabaseFolder.id,
+      };
+    }
+
+    const parts = normalized.split("/");
+    let built = "";
+    let parentDriveId = driveParentId;
+    let parentSupabaseId: string | null = null;
+
+    for (const part of parts) {
+      built = built ? `${built}/${part}` : part;
+      const cached = folderCache.get(built);
+      if (cached) {
+        parentDriveId = cached.driveId;
+        parentSupabaseId = cached.supabaseId;
+        continue;
+      }
+
+      const createdDriveFolder = await createDriveFolder(part, parentDriveId, uploadedBy);
+      const createdSupabaseFolder = await createFolderRecord({
+        driveFolderId: createdDriveFolder.id,
+        name: part,
+        parentFolderId: parentSupabaseId,
+        createdBy: uploadedBy,
+      });
+
+      folderCache.set(built, {
+        driveId: createdDriveFolder.id,
+        supabaseId: createdSupabaseFolder.id,
+      });
+
+      if (!folders.find((folder) => folder.id === createdSupabaseFolder.id)) {
+        folders = [
+          {
+            id: createdSupabaseFolder.id,
+            name: part,
+            ownerId: uploadedBy,
+            color: "green",
+            createdAt: new Date().toISOString(),
+            parentFolderId: parentSupabaseId,
+          },
+          ...folders,
+        ];
+      }
+
+      parentDriveId = createdDriveFolder.id;
+      parentSupabaseId = createdSupabaseFolder.id;
+    }
+
+    return folderCache.get(normalized)!;
   };
-  files = [archived, ...files];
-  return archived;
+
+  let succeeded = 0;
+  let failed = 0;
+  let totalOriginalBytes = 0;
+  let totalStoredBytes = 0;
+  const uploadedFiles: ArchivedFile[] = [];
+
+  for (let i = 0; i < filesToUpload.length; i += 1) {
+    const file = filesToUpload[i];
+    const relativePath = (file.webkitRelativePath || `${rootFolderName}/${file.name}`).replace(/\\/g, "/");
+    const pathParts = relativePath.split("/").filter(Boolean);
+    const parentRelativePath =
+      pathParts.length > 1 ? pathParts.slice(0, -1).join("/") : rootFolderName;
+
+    try {
+      const parentFolder = await ensureFolder(parentRelativePath);
+      const compression = await compressFile(file);
+
+      const driveFile = await uploadFileToDrive(
+        compression.compressedFile,
+        parentFolder.driveId,
+        parentFolder.supabaseId,
+        uploadedBy
+      );
+
+      await createFileRecord({
+        driveFileId: driveFile.id,
+        folderId: parentFolder.supabaseId,
+        name: file.name,
+        mimeType: driveFile.mimeType || file.type || "application/octet-stream",
+        originalSizeBytes: compression.originalSize,
+        compressedSizeBytes: compression.compressedSize,
+        uploadedBy,
+      });
+
+      const compressionRatio =
+        compression.originalSize > 0
+          ? (compression.originalSize - compression.compressedSize) / compression.originalSize
+          : 0;
+
+      const mimeType = driveFile.mimeType || file.type || "application/octet-stream";
+      const createdAt = driveFile.createdTime || new Date().toISOString();
+
+      uploadedFiles.push({
+        id: driveFile.id,
+        name: driveFile.name || file.name,
+        kind: detectKind(mimeType, file.name),
+        mimeType,
+        ownerId: uploadedBy,
+        originalBytes: compression.originalSize,
+        storedBytes: compression.compressedSize,
+        compressionRatio,
+        tags: [],
+        createdAt,
+        updatedAt: createdAt,
+        previewUrl: `https://drive.google.com/file/d/${driveFile.id}/view`,
+        downloadUrl: `https://drive.google.com/uc?export=download&id=${driveFile.id}`,
+        folderId: parentFolder.supabaseId,
+      });
+
+      succeeded += 1;
+      totalOriginalBytes += compression.originalSize;
+      totalStoredBytes += compression.compressedSize;
+    } catch (error) {
+      console.error(`[uploadFolder] Failed to upload ${relativePath}:`, error);
+      failed += 1;
+    }
+
+    onProgress?.(i + 1, filesToUpload.length);
+  }
+
+  if (uploadedFiles.length > 0) {
+    const uploadedIds = new Set(uploadedFiles.map((file) => file.id));
+    files = [...uploadedFiles, ...files.filter((file) => !uploadedIds.has(file.id))];
+  }
+
+  return {
+    succeeded,
+    failed,
+    totalOriginalBytes,
+    totalStoredBytes,
+  };
 }
 
 export async function deleteFile(id: string): Promise<void> {
-  await sleep();
-  const before = files.length;
+  await driveDelete(id);
   files = files.filter((f) => f.id !== id);
-  if (files.length === before) throw apiError("not_found", `File ${id} not found`);
 }
 
 // --- Sharing ---
@@ -197,9 +499,15 @@ export async function revokeShareLink(shareId: string): Promise<void> {
 }
 
 // --- Folders ---
-export async function listFolders(): Promise<Folder[]> {
+export async function listFolders(parentFolderId?: string | null): Promise<Folder[]> {
   await sleep();
-  return [...folders].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  let result = [...folders];
+  if (typeof parentFolderId === "string") {
+    result = result.filter((f) => f.parentFolderId === parentFolderId);
+  } else if (parentFolderId === null) {
+    result = result.filter((f) => f.parentFolderId === null || f.parentFolderId === undefined);
+  }
+  return result.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
 export async function getFolder(id: string): Promise<Folder> {
@@ -209,14 +517,22 @@ export async function getFolder(id: string): Promise<Folder> {
   return folder;
 }
 
-export async function createFolder(name: string, color?: FolderColor): Promise<Folder> {
+export async function createFolder(
+  name: string,
+  color?: FolderColor,
+  parentFolderId?: string | null
+): Promise<Folder> {
   await sleep();
+  if (parentFolderId !== null && parentFolderId !== undefined && !folders.find((f) => f.id === parentFolderId)) {
+    throw apiError("not_found", `Parent folder ${parentFolderId} not found`);
+  }
   const folder: Folder = {
     id: `folder_${Math.random().toString(36).slice(2, 10)}`,
     name,
     ownerId: currentUser?.id ?? "admin_reyes",
     color: color ?? "green",
     createdAt: new Date().toISOString(),
+    parentFolderId: parentFolderId ?? null,
   };
   folders = [folder, ...folders];
   return folder;

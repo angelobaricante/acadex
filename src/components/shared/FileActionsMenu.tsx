@@ -1,4 +1,5 @@
 import { useState } from "react";
+import ConfirmDialog from "./ConfirmDialog";
 import { useNavigate } from "react-router-dom";
 import {
   Check,
@@ -30,18 +31,22 @@ import {
 import { useUIStore } from "@/lib/store";
 import type { ArchivedFile, Folder } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { showDeleteToast } from "./deleteToast";
 
 interface FileActionsMenuProps {
   file: ArchivedFile;
   /** Visual variant for the trigger button. */
   variant?: "card" | "row";
+  folderTrail?: Folder[];
+  onOpenFile?: (file: ArchivedFile) => void;
 }
 
-export default function FileActionsMenu({ file, variant = "card" }: FileActionsMenuProps) {
+export default function FileActionsMenu({ file, variant = "card", folderTrail, onOpenFile }: FileActionsMenuProps) {
   const navigate = useNavigate();
   const bumpFoldersVersion = useUIStore((s) => s.bumpFoldersVersion);
   const [folders, setFolders] = useState<Folder[] | null>(null);
   const [loadingFolders, setLoadingFolders] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   async function ensureFoldersLoaded() {
     if (folders !== null || loadingFolders) return;
@@ -57,7 +62,11 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
   }
 
   function handleOpen() {
-    navigate(`/file/${file.id}`);
+    if (onOpenFile) {
+      onOpenFile(file);
+      return;
+    }
+    navigate(`/file/${file.id}`, { state: { folderTrail: folderTrail ?? [] } });
   }
 
   async function handleCopyLink() {
@@ -89,11 +98,15 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
   async function handleDelete() {
     try {
       await deleteFile(file.id);
-      toast.success("File deleted");
+      showDeleteToast({ kind: "file", name: file.name });
       bumpFoldersVersion();
     } catch {
       toast.error("Couldn't delete file");
     }
+  }
+
+  function requestDelete() {
+    setConfirmOpen(true);
   }
 
   // Prevent clicks inside the menu trigger from bubbling to the parent Link.
@@ -118,7 +131,7 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
           "transition-opacity duration-150"
         );
 
-  return (
+  return (<>
     <DropdownMenu
       onOpenChange={(open) => {
         if (open) void ensureFoldersLoaded();
@@ -138,7 +151,7 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-52 p-1"
+        className="w-60 p-1"
         onClick={(e) => e.stopPropagation()}
       >
         <DropdownMenuItem
@@ -210,7 +223,7 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
 
         <DropdownMenuItem
           variant="destructive"
-          onSelect={() => void handleDelete()}
+          onSelect={() => requestDelete()}
           className="gap-2 px-2 py-1.5 text-[13px]"
         >
           <Trash2 className="size-[14px]" strokeWidth={1.8} />
@@ -218,5 +231,14 @@ export default function FileActionsMenu({ file, variant = "card" }: FileActionsM
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  );
+
+    <ConfirmDialog
+      open={confirmOpen}
+      onOpenChange={setConfirmOpen}
+      title="Delete file?"
+      description={`"${file.name}" will be permanently deleted and cannot be recovered.`}
+      confirmLabel="Delete file"
+      onConfirm={() => void handleDelete()}
+    />
+  </>);
 }

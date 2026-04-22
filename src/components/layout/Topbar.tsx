@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, LogOut, Search, Upload } from "lucide-react";
+import { LogOut, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,17 +12,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { useSessionStore, useUIStore } from "@/lib/store";
-import { mockSignIn, signOut } from "@/lib/api";
+import { useSessionStore } from "@/lib/store";
+import { signOut } from "@/lib/api";
 import type { Role } from "@/lib/types";
-import { cn } from "@/lib/utils";
 import { useShellSearch } from "./AppShell";
 
+/*
 const ROLES: Array<{ value: Role; label: string }> = [
   { value: "student", label: "Student" },
   { value: "faculty", label: "Faculty" },
   { value: "admin", label: "Admin" },
 ];
+*/
 
 function initialsOf(name: string): string {
   const parts = name
@@ -43,14 +45,19 @@ export default function Topbar() {
   const navigate = useNavigate();
   const user = useSessionStore((s) => s.user);
   const setUser = useSessionStore((s) => s.setUser);
-  const openUpload = useUIStore((s) => s.openUpload);
   const { search, setSearch } = useShellSearch();
+  const [isFocused, setIsFocused] = useState(false);
 
+  const showSuggestions = isFocused && !search;
+  const suggestedTags = ["CS101", "Admin", "Project", "Thesis", "Textbook", "Lab", "Exam"];
+
+  /*
   async function handleSwitchRole(role: Role) {
     if (user?.role === role) return;
     const next = await mockSignIn(role);
     setUser(next);
   }
+  */
 
   async function handleSignOut() {
     await signOut();
@@ -71,9 +78,23 @@ export default function Topbar() {
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setTimeout(() => setIsFocused(false), 200)}
           placeholder="Search files and tags…"
-          className="h-9 rounded-lg border-border/80 bg-[hsl(48_25%_98%)] pl-8 pr-14 text-[13px] shadow-[inset_0_1px_0_rgba(16,24,40,0.02)] transition-colors focus-visible:bg-white"
+          className="h-9 rounded-lg border-border/80 bg-[hsl(48_25%_98%)] pl-8 pr-20 text-[13px] shadow-[inset_0_1px_0_rgba(16,24,40,0.02)] transition-colors focus-visible:bg-white [&::-webkit-search-cancel-button]:hidden"
         />
+        {search && (
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              setSearch("");
+            }}
+            className="absolute right-11 top-1/2 flex h-5 w-5 -translate-y-1/2 cursor-pointer items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <X className="size-[13px]" strokeWidth={3} />
+          </button>
+        )}
         <kbd
           aria-hidden="true"
           className="pointer-events-none absolute right-2 top-1/2 hidden h-5 -translate-y-1/2 select-none items-center gap-0.5 rounded border border-border/80 bg-white px-1.5 font-sans text-[10.5px] font-medium text-muted-foreground sm:inline-flex"
@@ -81,19 +102,33 @@ export default function Topbar() {
           <span className="text-[11px] leading-none">⌘</span>
           <span className="leading-none">K</span>
         </kbd>
+
+        {showSuggestions && (
+          <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-50 rounded-xl border border-border/80 bg-white p-2 shadow-[0_8px_30px_rgb(0,0,0,0.08)] animate-in fade-in slide-in-from-top-1.5">
+            <div className="px-2 pb-1.5 pt-1 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/80">
+              Suggested Tags
+            </div>
+            <div className="flex flex-wrap gap-1.5 px-1 py-1">
+              {suggestedTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    setSearch(tag);
+                    setIsFocused(false);
+                  }}
+                  className="rounded-md bg-muted/60 px-2.5 py-1 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <Button
-          type="button"
-          size="sm"
-          onClick={openUpload}
-          className="h-9 gap-1.5 rounded-lg px-3 text-[13px] font-medium"
-        >
-          <Upload className="size-[15px]" />
-          <span>Upload</span>
-        </Button>
-
         {user && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -126,6 +161,7 @@ export default function Topbar() {
                 </div>
               </div>
               <DropdownMenuSeparator />
+              {/*
               <div className="px-2 pb-1 pt-1.5">
                 <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
                   Switch demo role
@@ -138,7 +174,7 @@ export default function Topbar() {
                     key={value}
                     onSelect={() => handleSwitchRole(value)}
                     className={cn(
-                      "gap-2 px-2 py-1.5 text-[13px]",
+                      "cursor-pointer gap-2 px-2 py-1.5 text-[13px]",
                       active && "font-medium text-primary"
                     )}
                   >
@@ -150,9 +186,10 @@ export default function Topbar() {
                 );
               })}
               <DropdownMenuSeparator />
+              */}
               <DropdownMenuItem
                 onSelect={handleSignOut}
-                className="gap-2 px-2 py-1.5 text-[13px]"
+                className="cursor-pointer gap-2 px-2 py-1.5 text-[13px]"
               >
                 <LogOut className="size-[14px] text-muted-foreground" />
                 <span>Sign out</span>

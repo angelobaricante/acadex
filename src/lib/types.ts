@@ -35,6 +35,7 @@ export interface Folder {
   ownerId: string;
   color: FolderColor;
   createdAt: string; // ISO
+  parentFolderId?: string | null;
 }
 
 export type SharePermission = "view" | "view_and_download";
