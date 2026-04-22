@@ -10,9 +10,11 @@ import type {
   User,
 } from "./types";
 import { driveDelete, driveList, driveUpload } from "./driveApi";
+import { createDriveFolder, uploadFileToDrive } from "./drive/driveApi";
 import { getAccessToken, signInWithGoogle, signOutFromGoogle } from "./googleAuth";
 import { compressFile } from "./compression/compressFile";
 import { createFileRecord } from "./supabase/fileService";
+import { createFolderRecord } from "./supabase/folderService";
 import { supabase } from "./supabaseClient";
 import {
   mockFiles,
@@ -123,6 +125,13 @@ export interface ListFilesParams {
   ownerId?: string;
   folderId?: string | null;
   sort?: "recent" | "largest" | "most_saved";
+}
+
+export interface FolderUploadSummary {
+  succeeded: number;
+  failed: number;
+  totalOriginalBytes: number;
+  totalStoredBytes: number;
 }
 
 export async function listFiles(params: ListFilesParams = {}): Promise<ArchivedFile[]> {
@@ -245,6 +254,206 @@ export async function uploadFile(file: File, targetFolderId: string | null = nul
 
   files = [archivedWithCompression, ...files.filter((f) => f.id !== archived.id)];
   return archivedWithCompression;
+}
+
+function detectKind(mimeType: string, name: string): FileKind {
+  if (mimeType === "application/pdf") return "pdf";
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (name.toLowerCase().endsWith(".docx")) return "docx";
+  if (name.toLowerCase().endsWith(".pptx")) return "pptx";
+  return "other";
+}
+
+export async function uploadFolder(
+  fileList: FileList,
+  onProgress?: (done: number, total: number) => void
+): Promise<FolderUploadSummary> {
+  const filesToUpload = Array.from(fileList) as Array<File & { webkitRelativePath?: string }>;
+  if (filesToUpload.length === 0) {
+    return { succeeded: 0, failed: 0, totalOriginalBytes: 0, totalStoredBytes: 0 };
+  }
+
+  const {
+    data: { user: supabaseUser },
+  } = await supabase.auth.getUser();
+  const uploadedBy = isUuid(supabaseUser?.id)
+    ? supabaseUser!.id
+    : isUuid(currentUser?.id)
+      ? currentUser!.id
+      : getStableUploadedByFallback(currentUser?.id);
+
+  const firstPath = (filesToUpload[0].webkitRelativePath || filesToUpload[0].name).replace(/\\/g, "/");
+  const rootFolderName = firstPath.split("/").filter(Boolean)[0] || "Uploaded Folder";
+  const driveParentId = "root";
+
+  const rootDriveFolder = await createDriveFolder(rootFolderName, driveParentId, uploadedBy);
+  const rootSupabaseFolder = await createFolderRecord({
+    driveFolderId: rootDriveFolder.id,
+    name: rootFolderName,
+    parentFolderId: null,
+    createdBy: uploadedBy,
+  });
+
+  const nowIso = new Date().toISOString();
+  if (!folders.find((folder) => folder.id === rootSupabaseFolder.id)) {
+    folders = [
+      {
+        id: rootSupabaseFolder.id,
+        name: rootFolderName,
+        ownerId: uploadedBy,
+        color: "green",
+        createdAt: nowIso,
+        parentFolderId: null,
+      },
+      ...folders,
+    ];
+  }
+
+  const folderCache = new Map<string, { driveId: string; supabaseId: string }>();
+  folderCache.set(rootFolderName, {
+    driveId: rootDriveFolder.id,
+    supabaseId: rootSupabaseFolder.id,
+  });
+
+  const ensureFolder = async (folderPath: string): Promise<{ driveId: string; supabaseId: string }> => {
+    const normalized = folderPath.replace(/\\/g, "/").split("/").filter(Boolean).join("/");
+    if (!normalized) {
+      return {
+        driveId: rootDriveFolder.id,
+        supabaseId: rootSupabaseFolder.id,
+      };
+    }
+
+    const parts = normalized.split("/");
+    let built = "";
+    let parentDriveId = driveParentId;
+    let parentSupabaseId: string | null = null;
+
+    for (const part of parts) {
+      built = built ? `${built}/${part}` : part;
+      const cached = folderCache.get(built);
+      if (cached) {
+        parentDriveId = cached.driveId;
+        parentSupabaseId = cached.supabaseId;
+        continue;
+      }
+
+      const createdDriveFolder = await createDriveFolder(part, parentDriveId, uploadedBy);
+      const createdSupabaseFolder = await createFolderRecord({
+        driveFolderId: createdDriveFolder.id,
+        name: part,
+        parentFolderId: parentSupabaseId,
+        createdBy: uploadedBy,
+      });
+
+      folderCache.set(built, {
+        driveId: createdDriveFolder.id,
+        supabaseId: createdSupabaseFolder.id,
+      });
+
+      if (!folders.find((folder) => folder.id === createdSupabaseFolder.id)) {
+        folders = [
+          {
+            id: createdSupabaseFolder.id,
+            name: part,
+            ownerId: uploadedBy,
+            color: "green",
+            createdAt: new Date().toISOString(),
+            parentFolderId: parentSupabaseId,
+          },
+          ...folders,
+        ];
+      }
+
+      parentDriveId = createdDriveFolder.id;
+      parentSupabaseId = createdSupabaseFolder.id;
+    }
+
+    return folderCache.get(normalized)!;
+  };
+
+  let succeeded = 0;
+  let failed = 0;
+  let totalOriginalBytes = 0;
+  let totalStoredBytes = 0;
+  const uploadedFiles: ArchivedFile[] = [];
+
+  for (let i = 0; i < filesToUpload.length; i += 1) {
+    const file = filesToUpload[i];
+    const relativePath = (file.webkitRelativePath || `${rootFolderName}/${file.name}`).replace(/\\/g, "/");
+    const pathParts = relativePath.split("/").filter(Boolean);
+    const parentRelativePath =
+      pathParts.length > 1 ? pathParts.slice(0, -1).join("/") : rootFolderName;
+
+    try {
+      const parentFolder = await ensureFolder(parentRelativePath);
+      const compression = await compressFile(file);
+
+      const driveFile = await uploadFileToDrive(
+        compression.compressedFile,
+        parentFolder.driveId,
+        parentFolder.supabaseId,
+        uploadedBy
+      );
+
+      await createFileRecord({
+        driveFileId: driveFile.id,
+        folderId: parentFolder.supabaseId,
+        name: file.name,
+        mimeType: driveFile.mimeType || file.type || "application/octet-stream",
+        originalSizeBytes: compression.originalSize,
+        compressedSizeBytes: compression.compressedSize,
+        uploadedBy,
+      });
+
+      const compressionRatio =
+        compression.originalSize > 0
+          ? (compression.originalSize - compression.compressedSize) / compression.originalSize
+          : 0;
+
+      const mimeType = driveFile.mimeType || file.type || "application/octet-stream";
+      const createdAt = driveFile.createdTime || new Date().toISOString();
+
+      uploadedFiles.push({
+        id: driveFile.id,
+        name: driveFile.name || file.name,
+        kind: detectKind(mimeType, file.name),
+        mimeType,
+        ownerId: uploadedBy,
+        originalBytes: compression.originalSize,
+        storedBytes: compression.compressedSize,
+        compressionRatio,
+        tags: [],
+        createdAt,
+        updatedAt: createdAt,
+        previewUrl: `https://drive.google.com/file/d/${driveFile.id}/view`,
+        downloadUrl: `https://drive.google.com/uc?export=download&id=${driveFile.id}`,
+        folderId: parentFolder.supabaseId,
+      });
+
+      succeeded += 1;
+      totalOriginalBytes += compression.originalSize;
+      totalStoredBytes += compression.compressedSize;
+    } catch (error) {
+      console.error(`[uploadFolder] Failed to upload ${relativePath}:`, error);
+      failed += 1;
+    }
+
+    onProgress?.(i + 1, filesToUpload.length);
+  }
+
+  if (uploadedFiles.length > 0) {
+    const uploadedIds = new Set(uploadedFiles.map((file) => file.id));
+    files = [...uploadedFiles, ...files.filter((file) => !uploadedIds.has(file.id))];
+  }
+
+  return {
+    succeeded,
+    failed,
+    totalOriginalBytes,
+    totalStoredBytes,
+  };
 }
 
 export async function deleteFile(id: string): Promise<void> {

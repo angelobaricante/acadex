@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, FolderUp, Folder as FolderIcon, Loader2 } from "lucide-react";
+import { FolderUp, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -8,44 +8,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
-import { listFolders, moveFileToFolder, uploadFile } from "@/lib/api";
-import type { Folder } from "@/lib/types";
+import { uploadFolder } from "@/lib/api";
 import { toast } from "sonner";
-import { showFileUploadToast, showFolderUploadToast } from "@/components/shared/uploadToast";
+import { showFolderUploadToast } from "@/components/shared/uploadToast";
 
 export default function FolderUploadDialog() {
   const open = useUIStore((s) => s.folderUploadDialogOpen);
   const closeFolderUpload = useUIStore((s) => s.closeFolderUpload);
-  const currentFolderId = useUIStore((s) => s.currentFolderId);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-
-  // Load folders + seed initial target when dialog opens.
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    listFolders().then((result) => {
-      if (cancelled) return;
-      setFolders(result);
-    });
-    setTargetFolderId(currentFolderId);
-    return () => {
-      cancelled = true;
-    };
-  }, [open, currentFolderId]);
 
   // Reset local state when dialog closes.
   useEffect(() => {
@@ -56,67 +32,39 @@ export default function FolderUploadDialog() {
     }
   }, [open]);
 
-  const targetFolder = folders.find((f) => f.id === targetFolderId) ?? null;
-
   async function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList);
     setUploading(true);
-    setProgress({ done: 0, total: files.length });
-
-    let succeededCount = 0;
-    let totalOriginal = 0;
-    let totalStored = 0;
+    setProgress({ done: 0, total: fileList.length });
 
     try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        try {
-          const result = await uploadFile(file, targetFolderId);
-          if (targetFolderId) {
-            try {
-              await moveFileToFolder(result.id, targetFolderId);
-            } catch {
-              toast.error(`Couldn't move ${file.name} to '${targetFolder?.name ?? "folder"}'`);
-            }
-          }
+      const summary = await uploadFolder(fileList, (done, total) => {
+        setProgress({ done, total });
+      });
 
-          // Individual toast only when a single file is dropped.
-          if (files.length === 1) {
-            showFileUploadToast({
-              name: result.name ?? file.name,
-              originalBytes: result.originalBytes,
-              storedBytes: result.storedBytes,
-              compressionRatio: result.compressionRatio,
-              targetFolderName: targetFolder?.name,
-            });
-          }
-
-          succeededCount++;
-          totalOriginal += result.originalBytes;
-          totalStored += result.storedBytes;
-        } catch {
-          toast.error(`Failed to upload ${file.name}`);
-        }
-        setProgress({ done: i + 1, total: files.length });
-      }
-
-      // Summary toast for the whole folder batch.
-      if (files.length > 1 && succeededCount > 0) {
+      if (summary.succeeded > 0) {
         showFolderUploadToast({
-          fileCount: succeededCount,
-          totalOriginalBytes: totalOriginal,
-          totalStoredBytes: totalStored,
-          totalCompressionRatio: totalOriginal > 0 ? (totalOriginal - totalStored) / totalOriginal : 0,
-          targetFolderName: targetFolder?.name,
+          fileCount: summary.succeeded,
+          totalOriginalBytes: summary.totalOriginalBytes,
+          totalStoredBytes: summary.totalStoredBytes,
+          totalCompressionRatio:
+            summary.totalOriginalBytes > 0
+              ? (summary.totalOriginalBytes - summary.totalStoredBytes) / summary.totalOriginalBytes
+              : 0,
+          targetFolderName: undefined,
         });
       }
 
-      useUIStore.getState().bumpUploadsVersion();
-      if (targetFolderId) {
-        useUIStore.getState().bumpFoldersVersion();
+      if (summary.failed > 0) {
+        toast.error(`${summary.failed} file(s) failed to upload.`);
       }
+
+      useUIStore.getState().bumpUploadsVersion();
+      useUIStore.getState().bumpFoldersVersion();
       closeFolderUpload();
+    } catch (error) {
+      toast.error("Folder upload failed. Please try again.");
+      console.error("[FolderUploadDialog] uploadFolder error:", error);
     } finally {
       setUploading(false);
       setProgress(null);
@@ -160,73 +108,6 @@ export default function FolderUploadDialog() {
             Select a local folder to upload all its files at once. AcaDex compresses each file on the fly.
           </DialogDescription>
         </DialogHeader>
-
-        {/* Destination folder picker */}
-        <div className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-            Upload to
-          </span>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={uploading}
-                className="h-8 w-full justify-start gap-2 rounded-lg px-2.5 text-[12.5px] font-normal"
-              >
-                <FolderIcon
-                  className="size-[14px] text-muted-foreground"
-                  strokeWidth={1.8}
-                />
-                <span className="flex-1 truncate text-left text-foreground">
-                  {targetFolder ? targetFolder.name : "All files"}
-                </span>
-                <ChevronDown className="size-[14px] text-muted-foreground/70" strokeWidth={1.8} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              align="start"
-              className="w-[calc(var(--radix-dropdown-menu-trigger-width))] p-1"
-            >
-              <DropdownMenuItem
-                onSelect={() => setTargetFolderId(null)}
-                className="gap-2 px-2 py-1.5 text-[13px]"
-              >
-                <FolderIcon
-                  className="size-[14px] text-muted-foreground"
-                  strokeWidth={1.8}
-                />
-                <span>All files</span>
-                {targetFolderId === null && (
-                  <Check
-                    className="ml-auto size-[13px] text-primary"
-                    strokeWidth={2}
-                  />
-                )}
-              </DropdownMenuItem>
-              {folders.map((folder) => (
-                <DropdownMenuItem
-                  key={folder.id}
-                  onSelect={() => setTargetFolderId(folder.id)}
-                  className="gap-2 px-2 py-1.5 text-[13px]"
-                >
-                  <FolderIcon
-                    className="size-[14px] text-muted-foreground"
-                    strokeWidth={1.8}
-                  />
-                  <span className="truncate">{folder.name}</span>
-                  {targetFolderId === folder.id && (
-                    <Check
-                      className="ml-auto size-[13px] text-primary"
-                      strokeWidth={2}
-                    />
-                  )}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
 
         {/* Drop zone */}
         <div
