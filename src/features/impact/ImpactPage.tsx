@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getImpactStats } from "@/lib/api";
+import { mockImpact } from "@/lib/mockData";
 import type { FileKind, ImpactStats } from "@/lib/types";
 import { formatBytes } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -173,7 +174,7 @@ function BreakdownSkeleton() {
 }
 
 export default function ImpactPage() {
-  const [stats, setStats] = useState<ImpactStats | null>(null);
+  const [stats, setStats] = useState<ImpactStats | null>(mockImpact);
 
   const pesosFormatter = new Intl.NumberFormat("en-PH", {
     style: "currency",
@@ -188,6 +189,10 @@ export default function ImpactPage() {
   };
 
   useEffect(() => {
+    void getImpactStats;
+    setStats(mockImpact);
+
+    /*
     let cancelled = false;
     getImpactStats().then((result) => {
       if (cancelled) return;
@@ -196,6 +201,7 @@ export default function ImpactPage() {
     return () => {
       cancelled = true;
     };
+    */
   }, []);
 
   const trendData =
