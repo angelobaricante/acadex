@@ -14,7 +14,6 @@ import { createDriveFolder, uploadFileToDrive } from "./drive/driveApi";
 import { getAccessToken, signInWithGoogle, signOutFromGoogle } from "./googleAuth";
 import { compressFile } from "./compression/compressFile";
 import {
-  clearFolderFromFiles,
   createFileRecord,
   deleteFileRecordByDriveId,
   getFilesByDriveIds,
@@ -258,7 +257,11 @@ export async function getFile(id: string): Promise<ArchivedFile> {
   return file;
 }
 
-export async function uploadFile(file: File, targetFolderId: string | null = null): Promise<ArchivedFile> {
+export async function uploadFile(
+  file: File,
+  targetFolderId: string | null = null,
+  onCompressionProgress?: (progress: number) => void
+): Promise<ArchivedFile> {
   const {
     data: { user: supabaseUser },
   } = await supabase.auth.getUser();
@@ -281,7 +284,9 @@ export async function uploadFile(file: File, targetFolderId: string | null = nul
     throw apiError("duplicate_file", `"${file.name}" already exists in this folder.`);
   }
 
-  const compression = await compressFile(file);
+  const compression = await compressFile(file, {
+    onProgress: onCompressionProgress,
+  });
   const archived = await driveUpload(compression.compressedFile);
   const originalSizeBytes = file.size;
   const compressedSizeBytes = compression.compressedFile.size;

@@ -56,6 +56,7 @@ export default function UploadDialog() {
     status: "compressing" | "done" | "error";
     storedBytes?: number;
     savedPercent?: number;
+    progressPercent?: number;
   };
   const [items, setItems] = useState<UploadItem[]>([]);
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -123,6 +124,7 @@ export default function UploadDialog() {
         name: f.name,
         originalBytes: f.size,
         status: "compressing" as const,
+        progressPercent: 0,
       }))
     );
 
@@ -134,7 +136,18 @@ export default function UploadDialog() {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         try {
-          const result = await uploadFile(file, targetFolderId);
+          const result = await uploadFile(file, targetFolderId, (progress) => {
+            setItems((prev) =>
+              prev.map((it, idx) =>
+                idx === i
+                  ? {
+                      ...it,
+                      progressPercent: Math.max(0, Math.min(100, Math.round(progress))),
+                    }
+                  : it
+              )
+            );
+          });
           if (targetFolderId) {
             try {
               await moveFileToFolder(result.id, targetFolderId);
@@ -152,6 +165,7 @@ export default function UploadDialog() {
                     originalBytes: result.originalBytes,
                     storedBytes: result.storedBytes,
                     savedPercent: Math.round((result.compressionRatio ?? 0) * 100),
+                    progressPercent: 100,
                   }
                 : it
             )
@@ -404,6 +418,11 @@ export default function UploadDialog() {
                           <span className="mt-0.5 truncate text-[10.5px] tabular-nums text-muted-foreground">
                             {sizeLabel}
                           </span>
+                          {item.status === "compressing" && item.progressPercent !== undefined && item.progressPercent > 0 && (
+                            <span className="mt-0.5 text-[10px] tabular-nums text-muted-foreground">
+                              Compressing {item.progressPercent}%
+                            </span>
+                          )}
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
                           {item.status === "done" && item.savedPercent !== undefined && (
@@ -422,7 +441,14 @@ export default function UploadDialog() {
                       </div>
                       <div className="relative h-1 w-full overflow-hidden rounded-full bg-muted/80">
                         {item.status === "compressing" ? (
-                          <div className="preview-loader-progress-fill absolute inset-y-0 left-0 w-full origin-left rounded-full bg-[linear-gradient(90deg,transparent_0%,hsl(142_75%_58%)_40%,hsl(142_65%_45%)_60%,transparent_100%)]" />
+                          item.progressPercent !== undefined && item.progressPercent > 0 ? (
+                            <div
+                              className="absolute inset-y-0 left-0 rounded-full bg-primary transition-[width] duration-150 ease-out"
+                              style={{ width: `${item.progressPercent}%` }}
+                            />
+                          ) : (
+                            <div className="preview-loader-progress-fill absolute inset-y-0 left-0 w-full origin-left rounded-full bg-[linear-gradient(90deg,transparent_0%,hsl(142_75%_58%)_40%,hsl(142_65%_45%)_60%,transparent_100%)]" />
+                          )
                         ) : (
                           <div
                             className={cn(

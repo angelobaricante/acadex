@@ -1,6 +1,9 @@
 import type { CompressFileResult } from "../../../shared/ipcTypes";
 import { PDFDocument } from "pdf-lib";
 import { unzipSync, zipSync } from "fflate";
+import imageCompression from "browser-image-compression";
+import { FFmpeg } from "@ffmpeg/ffmpeg";
+import { fetchFile } from "@ffmpeg/util";
 
 export interface RendererCompressionResult {
     compressedFile: File;
@@ -11,6 +14,7 @@ export interface RendererCompressionResult {
 
 interface CompressFileOptions {
     allowLargerOutput?: boolean;
+    onProgress?: (progress: number) => void;
 }
 
 const PPTX_MIME =
@@ -28,6 +32,56 @@ function isOffice(file: File): boolean {
     return file.type === PPTX_MIME || file.type === DOCX_MIME || ext === "pptx" || ext === "docx";
 }
 
+function isImage(file: File): boolean {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    return file.type.startsWith("image/") || ["jpg", "jpeg", "png", "webp", "heic", "heif"].includes(ext);
+}
+
+function isVideo(file: File): boolean {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    return file.type.startsWith("video/") || ["mp4", "mov", "mkv", "avi", "webm", "m4v"].includes(ext);
+}
+
+function withExtension(fileName: string, extension: string): string {
+    const dotIndex = fileName.lastIndexOf(".");
+    if (dotIndex < 0) {
+        return `${fileName}.${extension}`;
+    }
+    return `${fileName.slice(0, dotIndex)}.${extension}`;
+}
+
+function isOfficeMediaImagePath(entryPath: string): boolean {
+    const normalized = entryPath.replace(/\\/g, "/").toLowerCase();
+    const inMediaFolder = normalized.startsWith("ppt/media/") || normalized.startsWith("word/media/");
+    return inMediaFolder && (normalized.endsWith(".jpg") || normalized.endsWith(".jpeg") || normalized.endsWith(".png"));
+}
+
+type FileCompressionOutput = {
+    bytes: Uint8Array;
+    fileName?: string;
+    mimeType?: string;
+};
+
+function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+}
+
+let browserFfmpeg: FFmpeg | null = null;
+let browserFfmpegLoaded = false;
+
+async function getBrowserFfmpeg(): Promise<FFmpeg> {
+    if (!browserFfmpeg) {
+        browserFfmpeg = new FFmpeg();
+    }
+
+    if (!browserFfmpegLoaded) {
+        await browserFfmpeg.load();
+        browserFfmpegLoaded = true;
+    }
+
+    return browserFfmpeg;
+}
+
 async function compressPdfInBrowser(buffer: ArrayBuffer): Promise<Uint8Array> {
     const pdfDoc = await PDFDocument.load(buffer, {
         ignoreEncryption: true,
@@ -38,24 +92,122 @@ async function compressPdfInBrowser(buffer: ArrayBuffer): Promise<Uint8Array> {
         addDefaultPage: false,
     });
 
-    return compressedBytes;
+    return new Uint8Array(compressedBytes);
 }
 
-function compressOfficeInBrowser(buffer: ArrayBuffer): Uint8Array {
-    const unzipped = unzipSync(new Uint8Array(buffer));
-    return zipSync(unzipped, {
+async function compressOfficeMediaImagesInBrowser(buffer: ArrayBuffer): Promise<Uint8Array> {
+    const archive = unzipSync(new Uint8Array(buffer));
+
+    for (const [entryPath, entryBytes] of Object.entries(archive)) {
+        if (!isOfficeMediaImagePath(entryPath)) {
+            continue;
+        }
+
+        try {
+            const entryName = entryPath.split("/").pop() ?? "image";
+            const mimeType = entryPath.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+            const sourceFile = new File([toArrayBuffer(entryBytes)], entryName, { type: mimeType });
+            const compressedBlob = await imageCompression(sourceFile, {
+                maxWidthOrHeight: 1920,
+                initialQuality: 0.75,
+                useWebWorker: true,
+                fileType: mimeType,
+            });
+            archive[entryPath] = new Uint8Array(await compressedBlob.arrayBuffer());
+        } catch {
+            // Keep original bytes for this entry when image recompression fails.
+        }
+    }
+
+    return new Uint8Array(zipSync(archive, {
         level: 9,
         mem: 12,
-    });
+    }));
 }
 
-function buildResult(file: File, bytes: Uint8Array, originalSize: number): RendererCompressionResult {
+async function compressImageInBrowser(file: File): Promise<FileCompressionOutput> {
+    const lowerName = file.name.toLowerCase();
+    const preferWebp = file.type === "image/png" || lowerName.endsWith(".png");
+    const fileType = preferWebp ? "image/webp" : file.type || "image/jpeg";
+
+    const compressedBlob = await imageCompression(file, {
+        maxWidthOrHeight: 1920,
+        initialQuality: 0.75,
+        useWebWorker: true,
+        fileType,
+    });
+
+    return {
+        bytes: new Uint8Array(await compressedBlob.arrayBuffer()),
+        fileName: preferWebp ? withExtension(file.name, "webp") : file.name,
+        mimeType: fileType,
+    };
+}
+
+async function compressVideoInBrowser(
+    file: File,
+    onProgress?: (progress: number) => void
+): Promise<FileCompressionOutput> {
+    const ffmpeg = await getBrowserFfmpeg();
+
+    const inputName = `input${file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : ".mp4"}`;
+    const outputName = "output.mp4";
+
+    const progressHandler = (event: { progress: number }): void => {
+        onProgress?.(Math.round(event.progress * 100));
+    };
+
+    ffmpeg.on("progress", progressHandler);
+
+    await ffmpeg.writeFile(inputName, await fetchFile(file));
+    await ffmpeg.exec([
+        "-i",
+        inputName,
+        "-c:v",
+        "libx264",
+        "-crf",
+        "28",
+        "-preset",
+        "medium",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "128k",
+        "-movflags",
+        "+faststart",
+        outputName,
+    ]);
+
+    const output = await ffmpeg.readFile(outputName);
+    ffmpeg.off("progress", progressHandler);
+
+    if (!(output instanceof Uint8Array)) {
+        throw new Error("Unexpected FFmpeg output format");
+    }
+
+    return {
+        bytes: new Uint8Array(output),
+        fileName: withExtension(file.name, "mp4"),
+        mimeType: "video/mp4",
+    };
+}
+
+function buildResult(
+    file: File,
+    bytes: Uint8Array,
+    originalSize: number,
+    outputFileName?: string,
+    outputMimeType?: string
+): RendererCompressionResult {
     const compressedSize = bytes.byteLength;
     const savedPercent =
         originalSize === 0 ? 0 : Math.round(((originalSize - compressedSize) / originalSize) * 100);
 
-    const blob = new Blob([bytes], { type: file.type });
-    const compressedFile = new File([blob], file.name, { type: file.type });
+    const finalType = outputMimeType ?? file.type;
+    const finalName = outputFileName ?? file.name;
+
+    const blob = new Blob([toArrayBuffer(bytes)], { type: finalType });
+    const compressedFile = new File([blob], finalName, { type: finalType });
 
     return {
         compressedFile,
@@ -67,7 +219,7 @@ function buildResult(file: File, bytes: Uint8Array, originalSize: number): Rende
 
 function logCompressionDetails(
     file: File,
-    strategy: "pdf" | "office" | "passthrough",
+    strategy: "pdf" | "office" | "image" | "video" | "passthrough",
     result: RendererCompressionResult,
     fallbackToOriginal: boolean,
     source: "web" | "electron-renderer"
@@ -95,44 +247,93 @@ export async function compressFile(
     const allowLargerOutput = options.allowLargerOutput ?? false;
 
     if (window.acadex) {
-        const result: CompressFileResult = await window.acadex.compressFile(
-            file.name,
-            file.type,
-            originalBytes.buffer,
-            allowLargerOutput
-        );
+        let disposeProgressListener: (() => void) | null = null;
+        const requestId = options.onProgress
+            ? (globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`)
+            : undefined;
 
-        const compressedBytes = new Uint8Array(result.compressedBytes);
-        const output = buildResult(file, compressedBytes, result.originalSize);
-        logCompressionDetails(
-            file,
-            isPdf(file) ? "pdf" : isOffice(file) ? "office" : "passthrough",
-            output,
-            output.compressedSize >= output.originalSize,
-            "electron-renderer"
-        );
-        return output;
+        if (requestId && options.onProgress) {
+            disposeProgressListener = window.acadex.onCompressionProgress((event) => {
+                if (event.requestId !== requestId || event.fileName !== file.name) {
+                    return;
+                }
+                options.onProgress?.(event.progress);
+            });
+        }
+
+        try {
+            const result: CompressFileResult = await window.acadex.compressFile(
+                file.name,
+                file.type,
+                originalBytes.buffer,
+                allowLargerOutput,
+                requestId
+            );
+
+            const compressedBytes = new Uint8Array(result.compressedBytes);
+            const output = buildResult(
+                file,
+                compressedBytes,
+                result.originalSize,
+                result.outputFileName,
+                result.outputMimeType
+            );
+            logCompressionDetails(
+                file,
+                isPdf(file)
+                    ? "pdf"
+                    : isOffice(file)
+                        ? "office"
+                        : isImage(file)
+                            ? "image"
+                            : isVideo(file)
+                                ? "video"
+                                : "passthrough",
+                output,
+                output.compressedSize >= output.originalSize,
+                "electron-renderer"
+            );
+            return output;
+        } finally {
+            disposeProgressListener?.();
+        }
     }
 
     try {
-        let compressedBytes = originalBytes;
-        let strategy: "pdf" | "office" | "passthrough" = "passthrough";
+        let compressedBytes: Uint8Array = originalBytes;
+        let outputFileName: string | undefined;
+        let outputMimeType: string | undefined;
+        let strategy: "pdf" | "office" | "image" | "video" | "passthrough" = "passthrough";
         let fallbackToOriginal = false;
 
         if (isPdf(file)) {
             compressedBytes = await compressPdfInBrowser(originalBytes.buffer);
             strategy = "pdf";
         } else if (isOffice(file)) {
-            compressedBytes = compressOfficeInBrowser(originalBytes.buffer);
+            compressedBytes = await compressOfficeMediaImagesInBrowser(originalBytes.buffer);
             strategy = "office";
+        } else if (isImage(file)) {
+            const imageOutput = await compressImageInBrowser(file);
+            compressedBytes = imageOutput.bytes;
+            outputFileName = imageOutput.fileName;
+            outputMimeType = imageOutput.mimeType;
+            strategy = "image";
+        } else if (isVideo(file)) {
+            const videoOutput = await compressVideoInBrowser(file, options.onProgress);
+            compressedBytes = videoOutput.bytes;
+            outputFileName = videoOutput.fileName;
+            outputMimeType = videoOutput.mimeType;
+            strategy = "video";
         }
 
         if (!allowLargerOutput && compressedBytes.byteLength > originalBytes.byteLength) {
             compressedBytes = originalBytes;
             fallbackToOriginal = true;
+            outputFileName = file.name;
+            outputMimeType = file.type;
         }
 
-        const output = buildResult(file, compressedBytes, originalSize);
+        const output = buildResult(file, compressedBytes, originalSize, outputFileName, outputMimeType);
         logCompressionDetails(file, strategy, output, fallbackToOriginal, "web");
         return output;
     } catch {

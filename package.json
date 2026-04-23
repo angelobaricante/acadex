@@ -17,6 +17,21 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "build": {
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**",
+      "node_modules/sharp/**"
+    ],
+    "extraResources": [
+      {
+        "from": "electron/binaries",
+        "to": "binaries",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  },
   "dependencies": {
     "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
@@ -27,6 +42,7 @@
     "browser-image-compression": "^2.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "ffmpeg-static": "^5.2.0",
     "fflate": "^0.8.2",
     "jszip": "^3.10.1",
     "lucide-react": "^1.8.0",
@@ -39,6 +55,7 @@
     "react-router-dom": "^7.14.1",
     "recharts": "^3.8.1",
     "shadcn": "^4.3.1",
+    "sharp": "^0.34.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss-animate": "^1.0.7",
