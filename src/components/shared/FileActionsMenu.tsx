@@ -23,7 +23,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  createShareLink,
   deleteFile,
   listFolders,
   moveFileToFolder,
@@ -66,11 +65,8 @@ export default function FileActionsMenu({ file, variant = "card", onOpenFile }: 
 
   async function handleCopyLink() {
     try {
-      const link = await createShareLink(file.id, "view");
-      const origin =
-        typeof window !== "undefined" ? window.location.origin : "";
-      await navigator.clipboard.writeText(`${origin}/s/${link.id}`);
-      toast.success("Link copied");
+      await navigator.clipboard.writeText(file.previewUrl);
+      toast.success("Google Drive link copied");
     } catch {
       toast.error("Couldn't copy link");
     }
