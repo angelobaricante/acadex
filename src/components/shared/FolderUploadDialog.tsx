@@ -19,23 +19,34 @@ import {
 
 async function runFolderUpload(fileList: FileList) {
   const toastId = `folder-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const controller = new AbortController();
+  const onCancel = () => {
+    controller.abort();
+  };
 
   showCompressionProgressToast({
     id: toastId,
     progressPercent: 0,
     fileIndex: 1,
     totalFiles: fileList.length,
+    onCancel,
   });
 
   try {
-    const summary = await uploadFolder(fileList, (done, total) => {
-      showCompressionProgressToast({
-        id: toastId,
-        progressPercent: total > 0 ? (done / total) * 100 : 0,
-        fileIndex: Math.min(done + 1, total),
-        totalFiles: total,
-      });
-    });
+    const summary = await uploadFolder(
+      fileList,
+      (done, total) => {
+        showCompressionProgressToast({
+          id: toastId,
+          progressPercent: total > 0 ? (done / total) * 100 : 0,
+          fileIndex: Math.min(done + 1, total),
+          totalFiles: total,
+          onCancel,
+          cancelling: controller.signal.aborted,
+        });
+      },
+      controller.signal
+    );
 
     if (summary.succeeded > 0) {
       showFolderUploadToast({
@@ -51,6 +62,9 @@ async function runFolderUpload(fileList: FileList) {
       });
     } else {
       toast.dismiss(toastId);
+      if (controller.signal.aborted) {
+        toast("Upload cancelled");
+      }
     }
 
     if (summary.failed > 0) {
@@ -61,8 +75,12 @@ async function runFolderUpload(fileList: FileList) {
     useUIStore.getState().bumpFoldersVersion();
   } catch (error) {
     toast.dismiss(toastId);
-    toast.error("Folder upload failed. Please try again.");
-    console.error("[FolderUploadDialog] uploadFolder error:", error);
+    if ((error as { name?: string } | undefined)?.name === "AbortError") {
+      toast("Upload cancelled");
+    } else {
+      toast.error("Folder upload failed. Please try again.");
+      console.error("[FolderUploadDialog] uploadFolder error:", error);
+    }
   }
 }
 

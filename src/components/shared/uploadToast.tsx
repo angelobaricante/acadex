@@ -84,6 +84,10 @@ export interface CompressionProgressToastOptions {
   fileIndex?: number;
   totalFiles?: number;
   targetFolderName?: string | null;
+  /** When provided, a Cancel button is rendered that invokes this callback. */
+  onCancel?: () => void;
+  /** When true, the toast is in a cancelling state: no button, muted message. */
+  cancelling?: boolean;
 }
 
 export function showCompressionProgressToast(opts: CompressionProgressToastOptions) {
@@ -94,6 +98,8 @@ export function showCompressionProgressToast(opts: CompressionProgressToastOptio
     fileIndex,
     totalFiles,
     targetFolderName,
+    onCancel,
+    cancelling,
   } = opts;
   const isBatch = typeof totalFiles === "number" && totalFiles > 1;
   const pct = Math.max(0, Math.min(100, Math.round(progressPercent)));
@@ -132,7 +138,9 @@ export function showCompressionProgressToast(opts: CompressionProgressToastOptio
                 <p className="truncate text-[11px] text-muted-foreground">{name}</p>
               )
             : (
-                <p className="truncate text-[11px] text-muted-foreground">Compressing…</p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {cancelling ? "Cancelling…" : "Compressing…"}
+                </p>
               )}
 
           <div className="flex items-center gap-2">
@@ -159,9 +167,24 @@ export function showCompressionProgressToast(opts: CompressionProgressToastOptio
           )}
         </div>
 
-        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center text-muted-foreground/70">
-          <BrandSpinner size={14} />
-        </span>
+        <div className="mt-0.5 flex shrink-0 flex-col items-end gap-1.5">
+          <span className="flex size-6 items-center justify-center text-muted-foreground/70">
+            <BrandSpinner size={14} />
+          </span>
+          {onCancel && !cancelling && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className={cn(
+                "rounded-md px-2 py-0.5 text-[11px] font-medium",
+                "text-muted-foreground transition-colors",
+                "hover:bg-muted hover:text-foreground"
+              )}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
     ),
     { id, duration: Infinity }

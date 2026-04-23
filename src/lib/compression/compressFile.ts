@@ -15,6 +15,14 @@ export interface RendererCompressionResult {
 interface CompressFileOptions {
     allowLargerOutput?: boolean;
     onProgress?: (progress: number) => void;
+    signal?: AbortSignal;
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+    if (signal?.aborted) {
+        throw (signal.reason instanceof Error ? signal.reason : undefined)
+            ?? new DOMException("Aborted", "AbortError");
+    }
 }
 
 const PPTX_MIME =
@@ -95,10 +103,14 @@ async function compressPdfInBrowser(buffer: ArrayBuffer): Promise<Uint8Array> {
     return new Uint8Array(compressedBytes);
 }
 
-async function compressOfficeMediaImagesInBrowser(buffer: ArrayBuffer): Promise<Uint8Array> {
+async function compressOfficeMediaImagesInBrowser(
+    buffer: ArrayBuffer,
+    signal?: AbortSignal
+): Promise<Uint8Array> {
     const archive = unzipSync(new Uint8Array(buffer));
 
     for (const [entryPath, entryBytes] of Object.entries(archive)) {
+        throwIfAborted(signal);
         if (!isOfficeMediaImagePath(entryPath)) {
             continue;
         }
@@ -112,20 +124,28 @@ async function compressOfficeMediaImagesInBrowser(buffer: ArrayBuffer): Promise<
                 initialQuality: 0.75,
                 useWebWorker: true,
                 fileType: mimeType,
+                signal,
             });
             archive[entryPath] = new Uint8Array(await compressedBlob.arrayBuffer());
-        } catch {
+        } catch (error) {
+            if ((error as { name?: string } | undefined)?.name === "AbortError") {
+                throw error;
+            }
             // Keep original bytes for this entry when image recompression fails.
         }
     }
 
+    throwIfAborted(signal);
     return new Uint8Array(zipSync(archive, {
         level: 9,
         mem: 12,
     }));
 }
 
-async function compressImageInBrowser(file: File): Promise<FileCompressionOutput> {
+async function compressImageInBrowser(
+    file: File,
+    signal?: AbortSignal
+): Promise<FileCompressionOutput> {
     const lowerName = file.name.toLowerCase();
     const preferWebp = file.type === "image/png" || lowerName.endsWith(".png");
     const fileType = preferWebp ? "image/webp" : file.type || "image/jpeg";
@@ -135,6 +155,7 @@ async function compressImageInBrowser(file: File): Promise<FileCompressionOutput
         initialQuality: 0.75,
         useWebWorker: true,
         fileType,
+        signal,
     });
 
     return {
@@ -146,8 +167,10 @@ async function compressImageInBrowser(file: File): Promise<FileCompressionOutput
 
 async function compressVideoInBrowser(
     file: File,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    signal?: AbortSignal
 ): Promise<FileCompressionOutput> {
+    throwIfAborted(signal);
     const ffmpeg = await getBrowserFfmpeg();
 
     const inputName = `input${file.name.includes(".") ? file.name.slice(file.name.lastIndexOf(".")) : ".mp4"}`;
@@ -159,37 +182,56 @@ async function compressVideoInBrowser(
 
     ffmpeg.on("progress", progressHandler);
 
-    await ffmpeg.writeFile(inputName, await fetchFile(file));
-    await ffmpeg.exec([
-        "-i",
-        inputName,
-        "-c:v",
-        "libx264",
-        "-crf",
-        "28",
-        "-preset",
-        "medium",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "128k",
-        "-movflags",
-        "+faststart",
-        outputName,
-    ]);
-
-    const output = await ffmpeg.readFile(outputName);
-    ffmpeg.off("progress", progressHandler);
-
-    if (!(output instanceof Uint8Array)) {
-        throw new Error("Unexpected FFmpeg output format");
-    }
-
-    return {
-        bytes: new Uint8Array(output),
-        fileName: withExtension(file.name, "mp4"),
-        mimeType: "video/mp4",
+    // Terminate the wasm instance mid-execution on abort; the next call will
+    // transparently re-create it.
+    const onAbort = (): void => {
+        try {
+            ffmpeg.terminate();
+        } catch {
+            // ignore
+        }
+        browserFfmpeg = null;
+        browserFfmpegLoaded = false;
     };
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    try {
+        await ffmpeg.writeFile(inputName, await fetchFile(file));
+        await ffmpeg.exec([
+            "-i",
+            inputName,
+            "-c:v",
+            "libx264",
+            "-crf",
+            "28",
+            "-preset",
+            "medium",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
+            "-movflags",
+            "+faststart",
+            outputName,
+        ]);
+
+        throwIfAborted(signal);
+        const output = await ffmpeg.readFile(outputName);
+
+        if (!(output instanceof Uint8Array)) {
+            throw new Error("Unexpected FFmpeg output format");
+        }
+
+        return {
+            bytes: new Uint8Array(output),
+            fileName: withExtension(file.name, "mp4"),
+            mimeType: "video/mp4",
+        };
+    } finally {
+        ffmpeg.off("progress", progressHandler);
+        signal?.removeEventListener("abort", onAbort);
+        throwIfAborted(signal);
+    }
 }
 
 function buildResult(
@@ -242,9 +284,13 @@ export async function compressFile(
     file: File,
     options: CompressFileOptions = {}
 ): Promise<RendererCompressionResult> {
+    const { signal } = options;
+    throwIfAborted(signal);
+
     const originalSize = file.size;
     const originalBytes = new Uint8Array(await file.arrayBuffer());
     const allowLargerOutput = options.allowLargerOutput ?? false;
+    throwIfAborted(signal);
 
     if (window.acadex) {
         let disposeProgressListener: (() => void) | null = null;
@@ -262,6 +308,7 @@ export async function compressFile(
         }
 
         try {
+            throwIfAborted(signal);
             const result: CompressFileResult = await window.acadex.compressFile(
                 file.name,
                 file.type,
@@ -269,6 +316,7 @@ export async function compressFile(
                 allowLargerOutput,
                 requestId
             );
+            throwIfAborted(signal);
 
             const compressedBytes = new Uint8Array(result.compressedBytes);
             const output = buildResult(
@@ -310,21 +358,23 @@ export async function compressFile(
             compressedBytes = await compressPdfInBrowser(originalBytes.buffer);
             strategy = "pdf";
         } else if (isOffice(file)) {
-            compressedBytes = await compressOfficeMediaImagesInBrowser(originalBytes.buffer);
+            compressedBytes = await compressOfficeMediaImagesInBrowser(originalBytes.buffer, signal);
             strategy = "office";
         } else if (isImage(file)) {
-            const imageOutput = await compressImageInBrowser(file);
+            const imageOutput = await compressImageInBrowser(file, signal);
             compressedBytes = imageOutput.bytes;
             outputFileName = imageOutput.fileName;
             outputMimeType = imageOutput.mimeType;
             strategy = "image";
         } else if (isVideo(file)) {
-            const videoOutput = await compressVideoInBrowser(file, options.onProgress);
+            const videoOutput = await compressVideoInBrowser(file, options.onProgress, signal);
             compressedBytes = videoOutput.bytes;
             outputFileName = videoOutput.fileName;
             outputMimeType = videoOutput.mimeType;
             strategy = "video";
         }
+
+        throwIfAborted(signal);
 
         if (!allowLargerOutput && compressedBytes.byteLength > originalBytes.byteLength) {
             compressedBytes = originalBytes;
@@ -336,7 +386,10 @@ export async function compressFile(
         const output = buildResult(file, compressedBytes, originalSize, outputFileName, outputMimeType);
         logCompressionDetails(file, strategy, output, fallbackToOriginal, "web");
         return output;
-    } catch {
+    } catch (error) {
+        if ((error as { name?: string } | undefined)?.name === "AbortError") {
+            throw error;
+        }
         const output = buildResult(file, originalBytes, originalSize);
         logCompressionDetails(file, "passthrough", output, true, "web");
         return output;

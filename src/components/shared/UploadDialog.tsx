@@ -29,6 +29,10 @@ import {
   showFolderUploadToast,
 } from "@/components/shared/uploadToast";
 
+function isAbortError(error: unknown): boolean {
+  return (error as { name?: string } | undefined)?.name === "AbortError";
+}
+
 // Runs a batch of uploads as a background task, driving a single progress
 // toast. The toast is replaced in place by the success toast on completion,
 // so compressing no longer blocks the user behind a modal.
@@ -38,6 +42,10 @@ async function runUploadBatch(
   targetFolderName: string | null | undefined,
 ) {
   const toastId = `upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const controller = new AbortController();
+  const onCancel = () => {
+    controller.abort();
+  };
 
   showCompressionProgressToast({
     id: toastId,
@@ -46,26 +54,39 @@ async function runUploadBatch(
     fileIndex: 1,
     totalFiles: files.length,
     targetFolderName,
+    onCancel,
   });
 
   let succeededCount = 0;
   let totalOriginal = 0;
   let totalStored = 0;
   let lastResult: Awaited<ReturnType<typeof uploadFile>> | null = null;
+  let cancelled = false;
 
   for (let i = 0; i < files.length; i++) {
+    if (controller.signal.aborted) {
+      cancelled = true;
+      break;
+    }
     const file = files[i];
     try {
-      const result = await uploadFile(file, targetFolderId, (progress) => {
-        showCompressionProgressToast({
-          id: toastId,
-          name: file.name,
-          progressPercent: progress,
-          fileIndex: i + 1,
-          totalFiles: files.length,
-          targetFolderName,
-        });
-      });
+      const result = await uploadFile(
+        file,
+        targetFolderId,
+        (progress) => {
+          showCompressionProgressToast({
+            id: toastId,
+            name: file.name,
+            progressPercent: progress,
+            fileIndex: i + 1,
+            totalFiles: files.length,
+            targetFolderName,
+            onCancel,
+            cancelling: controller.signal.aborted,
+          });
+        },
+        controller.signal
+      );
       if (targetFolderId) {
         try {
           await moveFileToFolder(result.id, targetFolderId);
@@ -78,7 +99,11 @@ async function runUploadBatch(
       totalOriginal += result.originalBytes;
       totalStored += result.storedBytes;
       lastResult = result;
-    } catch {
+    } catch (error) {
+      if (isAbortError(error)) {
+        cancelled = true;
+        break;
+      }
       toast.error(`Failed to upload ${file.name}`);
     }
   }
@@ -104,6 +129,9 @@ async function runUploadBatch(
     });
   } else {
     toast.dismiss(toastId);
+    if (cancelled) {
+      toast("Upload cancelled");
+    }
   }
 
   useUIStore.getState().bumpUploadsVersion();
