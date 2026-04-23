@@ -1,73 +1,62 @@
-# React + TypeScript + Vite
+# Acadex
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Desktop and web app for compressing and sharing academic documents. Built with React, Vite, TypeScript, and Electron, with Supabase for auth and storage.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Upload and compress PDFs, images, and videos (pdf-lib, sharp, ffmpeg).
+- Non-blocking compression progress toast with cancel support.
+- Shareable links for uploaded documents (`/s/:shareId`).
+- Dashboard and impact tracking pages.
+- Supabase-backed authentication (Google sign-in).
+- Runs as a web app or a packaged Electron desktop app.
 
-## React Compiler
+## Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React 19 + React Router 7
+- Vite 8, TypeScript 6
+- Tailwind CSS + shadcn/ui + Radix
+- Zustand, sonner, recharts, lucide-react
+- Electron 41 + electron-builder
+- Supabase (`@supabase/supabase-js`, `@supabase/ssr`)
 
-## Expanding the ESLint configuration
+## Project layout
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+src/           React app (features, components, hooks, lib)
+electron/      Electron main + preload, native compressors
+server/        Local document gateway (Node)
+shared/        IPC types shared between renderer and main
+public/        Static assets
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Getting started
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Requirements: Node 20+, npm.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
+
+Create a `.env` with your Supabase credentials (see `src/lib` for the keys referenced):
+
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+```
+
+## Scripts
+
+- `npm run dev` — Vite dev server
+- `npm run dev:gateway` — run the local document gateway
+- `npm run dev:secure` — dev server + gateway
+- `npm run dev:electron` — compile and launch Electron against the dev build
+- `npm run dev:full` — Vite + Electron together
+- `npm run build` — type-check, build web assets, compile Electron
+- `npm run package` — build and produce a distributable via electron-builder
+- `npm run lint` — ESLint
+- `npm test` / `npm run test:watch` — Vitest
+
+## Packaging
+
+`npm run package` bundles the app with electron-builder. Native binaries from `ffmpeg-static` and `sharp` are unpacked from the asar, and extra tools under `electron/binaries` are copied into the app resources.
