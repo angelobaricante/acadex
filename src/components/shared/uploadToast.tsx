@@ -127,9 +127,13 @@ export function showCompressionProgressToast(opts: CompressionProgressToastOptio
               : name ?? "Compressing…"}
           </p>
 
-          {isBatch && name && (
-            <p className="truncate text-[11px] text-muted-foreground">{name}</p>
-          )}
+          {isBatch
+            ? name && (
+                <p className="truncate text-[11px] text-muted-foreground">{name}</p>
+              )
+            : (
+                <p className="truncate text-[11px] text-muted-foreground">Compressing…</p>
+              )}
 
           <div className="flex items-center gap-2">
             <div className="relative h-1 flex-1 overflow-hidden rounded-full bg-muted/80">
