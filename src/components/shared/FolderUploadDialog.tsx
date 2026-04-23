@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FolderUp, Loader2 } from "lucide-react";
+import { FolderUp } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,69 +12,84 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
 import { uploadFolder } from "@/lib/api";
 import { toast } from "sonner";
-import { showFolderUploadToast } from "@/components/shared/uploadToast";
+import {
+  showCompressionProgressToast,
+  showFolderUploadToast,
+} from "@/components/shared/uploadToast";
+
+async function runFolderUpload(fileList: FileList) {
+  const toastId = `folder-upload-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  showCompressionProgressToast({
+    id: toastId,
+    progressPercent: 0,
+    fileIndex: 1,
+    totalFiles: fileList.length,
+  });
+
+  try {
+    const summary = await uploadFolder(fileList, (done, total) => {
+      showCompressionProgressToast({
+        id: toastId,
+        progressPercent: total > 0 ? (done / total) * 100 : 0,
+        fileIndex: Math.min(done + 1, total),
+        totalFiles: total,
+      });
+    });
+
+    if (summary.succeeded > 0) {
+      showFolderUploadToast({
+        id: toastId,
+        fileCount: summary.succeeded,
+        totalOriginalBytes: summary.totalOriginalBytes,
+        totalStoredBytes: summary.totalStoredBytes,
+        totalCompressionRatio:
+          summary.totalOriginalBytes > 0
+            ? (summary.totalOriginalBytes - summary.totalStoredBytes) / summary.totalOriginalBytes
+            : 0,
+        targetFolderName: undefined,
+      });
+    } else {
+      toast.dismiss(toastId);
+    }
+
+    if (summary.failed > 0) {
+      toast.error(`${summary.failed} file(s) failed to upload.`);
+    }
+
+    useUIStore.getState().bumpUploadsVersion();
+    useUIStore.getState().bumpFoldersVersion();
+  } catch (error) {
+    toast.dismiss(toastId);
+    toast.error("Folder upload failed. Please try again.");
+    console.error("[FolderUploadDialog] uploadFolder error:", error);
+  }
+}
 
 export default function FolderUploadDialog() {
   const open = useUIStore((s) => s.folderUploadDialogOpen);
   const closeFolderUpload = useUIStore((s) => s.closeFolderUpload);
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   // Reset local state when dialog closes.
   useEffect(() => {
     if (!open) {
-      setUploading(false);
       setDragOver(false);
-      setProgress(null);
     }
   }, [open]);
 
-  async function handleFiles(fileList: FileList | null) {
+  function handleFiles(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
-    setUploading(true);
-    setProgress({ done: 0, total: fileList.length });
-
-    try {
-      const summary = await uploadFolder(fileList, (done, total) => {
-        setProgress({ done, total });
-      });
-
-      if (summary.succeeded > 0) {
-        showFolderUploadToast({
-          fileCount: summary.succeeded,
-          totalOriginalBytes: summary.totalOriginalBytes,
-          totalStoredBytes: summary.totalStoredBytes,
-          totalCompressionRatio:
-            summary.totalOriginalBytes > 0
-              ? (summary.totalOriginalBytes - summary.totalStoredBytes) / summary.totalOriginalBytes
-              : 0,
-          targetFolderName: undefined,
-        });
-      }
-
-      if (summary.failed > 0) {
-        toast.error(`${summary.failed} file(s) failed to upload.`);
-      }
-
-      useUIStore.getState().bumpUploadsVersion();
-      useUIStore.getState().bumpFoldersVersion();
-      closeFolderUpload();
-    } catch (error) {
-      toast.error("Folder upload failed. Please try again.");
-      console.error("[FolderUploadDialog] uploadFolder error:", error);
-    } finally {
-      setUploading(false);
-      setProgress(null);
-    }
+    // Close immediately so the user can keep working while compression runs.
+    closeFolderUpload();
+    void runFolderUpload(fileList);
   }
 
   function onDrop(e: React.DragEvent<HTMLDivElement>) {
     e.preventDefault();
     setDragOver(false);
-    if (uploading) return;
     // Collect all files from dropped items (folders & files)
     const items = Array.from(e.dataTransfer.items);
     const dt = new DataTransfer();
@@ -84,7 +99,7 @@ export default function FolderUploadDialog() {
         if (f) dt.items.add(f);
       }
     }
-    void handleFiles(dt.files);
+    handleFiles(dt.files);
   }
 
   return (
@@ -113,19 +128,16 @@ export default function FolderUploadDialog() {
         <div
           role="button"
           tabIndex={0}
-          aria-disabled={uploading}
-          onClick={() => {
-            if (!uploading) inputRef.current?.click();
-          }}
+          onClick={() => inputRef.current?.click()}
           onKeyDown={(e) => {
-            if ((e.key === "Enter" || e.key === " ") && !uploading) {
+            if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               inputRef.current?.click();
             }
           }}
           onDragOver={(e) => {
             e.preventDefault();
-            if (!uploading) setDragOver(true);
+            setDragOver(true);
           }}
           onDragLeave={() => setDragOver(false)}
           onDrop={onDrop}
@@ -136,8 +148,7 @@ export default function FolderUploadDialog() {
             "focus-visible:ring-2 focus-visible:ring-ring/50",
             dragOver
               ? "border-primary bg-primary/10"
-              : "border-primary/30 bg-[hsl(48_25%_98%)] hover:border-primary/50 hover:bg-primary/[0.04]",
-            uploading && "cursor-not-allowed opacity-80"
+              : "border-primary/30 bg-[hsl(48_25%_98%)] hover:border-primary/50 hover:bg-primary/[0.04]"
           )}
         >
           <div
@@ -146,32 +157,14 @@ export default function FolderUploadDialog() {
               "ring-1 ring-border/70 shadow-[0_1px_0_rgba(16,24,40,0.02),0_1px_2px_rgba(16,24,40,0.04)]"
             )}
           >
-            {uploading ? (
-              <Loader2 className="size-5 animate-spin" strokeWidth={1.8} />
-            ) : (
-              <FolderUp className="size-5" strokeWidth={1.6} />
-            )}
+            <FolderUp className="size-5" strokeWidth={1.6} />
           </div>
           <p className="text-[13.5px] font-medium text-foreground">
-            {uploading
-              ? progress
-                ? `Uploading ${progress.done} of ${progress.total} files…`
-                : "Compressing…"
-              : "Drop a folder here or click to browse"}
+            Drop a folder here or click to browse
           </p>
           <p className="text-[11.5px] text-muted-foreground">
             All files inside the folder will be uploaded
           </p>
-
-          {/* Progress bar */}
-          {uploading && progress && (
-            <div className="w-full max-w-[180px] overflow-hidden rounded-full bg-primary/15 h-1.5">
-              <div
-                className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
-                style={{ width: `${Math.round((progress.done / progress.total) * 100)}%` }}
-              />
-            </div>
-          )}
 
           {/* Hidden folder input */}
           <input
@@ -182,14 +175,14 @@ export default function FolderUploadDialog() {
             multiple
             className="hidden"
             onChange={(e) => {
-              void handleFiles(e.target.files);
+              handleFiles(e.target.files);
               e.target.value = "";
             }}
           />
         </div>
 
         <div className="flex justify-end">
-          <Button variant="ghost" onClick={closeFolderUpload} disabled={uploading}>
+          <Button variant="ghost" onClick={closeFolderUpload}>
             Close
           </Button>
         </div>
