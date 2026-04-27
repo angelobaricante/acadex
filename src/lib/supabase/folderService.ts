@@ -19,7 +19,7 @@ export async function createFolderRecord(params: CreateFolderParams): Promise<Fo
             parent_folder_id: parentFolderId,
             created_by: createdBy,
             drive_synced_at: new Date().toISOString(),
-        })
+        } as never)
         .select()
         .single();
 

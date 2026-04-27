@@ -48,7 +48,7 @@ export async function createFileRecord(params: CreateFileParams): Promise<FileRo
 
     const { data, error } = await supabase
         .from("files")
-        .insert(insertPayload)
+        .insert(insertPayload as never)
         .select()
         .single();
 
@@ -110,7 +110,7 @@ export async function deleteFileRecordByDriveId(driveFileId: string): Promise<vo
 export async function clearFolderFromFiles(folderId: string): Promise<void> {
     const { error } = await supabase
         .from("files")
-        .update({ folder_id: null })
+        .update({ folder_id: null } as never)
         .eq("folder_id", folderId);
 
     if (error) {
@@ -179,5 +179,24 @@ export async function deleteFileRecordsByFolderIds(folderIds: string[]): Promise
 
     if (error) {
         throw error;
+    }
+}
+
+export async function updateFileTags(
+    driveFileId: string,
+    tags: string[],
+    status: "done" | "failed" = "done"
+): Promise<void> {
+    const { error } = await supabase
+        .from("files")
+        .update({ tags, tags_status: status } as never)
+        .eq("drive_file_id", driveFileId);
+
+    if (error) {
+        throw error;
+    }
+
+    if (import.meta.env.DEV) {
+        console.info("[acadex:supabase:files:tags-updated]", { driveFileId, tags, status });
     }
 }

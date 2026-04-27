@@ -19,6 +19,7 @@ export interface FileRow {
     compressed_size_bytes: number | null;
     compression_ratio: number | null;
     tags: string[] | null;
+    tags_status: string | null;
     uploaded_by: string;
     uploaded_at: string;
     drive_synced_at: string | null;

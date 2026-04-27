@@ -1,6 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 
-let cachedClient: ReturnType<typeof createClient> | null = null;
+type AppSupabaseClient = ReturnType<typeof createSupabaseClient>;
+
+let cachedClient: AppSupabaseClient | null = null;
 
 function createSupabaseClient() {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -15,15 +17,16 @@ function createSupabaseClient() {
   return createClient(supabaseUrl, supabaseAnonKey);
 }
 
-function getSupabaseClient() {
+function getSupabaseClient(): AppSupabaseClient {
   if (!cachedClient) {
     cachedClient = createSupabaseClient();
   }
   return cachedClient;
 }
 
-export const supabase = new Proxy({} as ReturnType<typeof createClient>, {
+export const supabase = new Proxy({} as AppSupabaseClient, {
   get(_target, property, receiver) {
-    return Reflect.get(getSupabaseClient(), property, receiver);
+    const client = getSupabaseClient();
+    return Reflect.get(client as object, property, receiver);
   },
 });

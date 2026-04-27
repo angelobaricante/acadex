@@ -6,8 +6,18 @@ interface SessionState {
   setUser: (u: User | null) => void;
 }
 
+function readStoredUser(): User | null {
+  try {
+    const raw = sessionStorage.getItem("acadex_user");
+    if (!raw) return null;
+    return JSON.parse(raw) as User;
+  } catch {
+    return null;
+  }
+}
+
 export const useSessionStore = create<SessionState>((set) => ({
-  user: null,
+  user: readStoredUser(),
   setUser: (user) => set({ user }),
 }));
 

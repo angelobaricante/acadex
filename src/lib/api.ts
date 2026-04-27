@@ -20,6 +20,7 @@ import {
   hasDuplicateFileForUser,
   deleteFileRecordsByFolderIds,
   listFilesByFolderIds,
+  updateFileTags,
 } from "./supabase/fileService";
 import {
   createFolderRecord,
@@ -35,6 +36,7 @@ import {
   mockFolders,
   mockShareLinks,
 } from "./mockData";
+import { generateTags } from "./tagging/autoTag";
 
 const COST_PER_GB_USD = 0.02318;
 const USD_TO_PHP = 56.5;
@@ -314,6 +316,30 @@ export async function uploadFile(
     uploadedBy,
   });
 
+  void (async () => {
+    try {
+      let folderName: string | null = null;
+      if (folderIdForSupabase) {
+        const folder = folders.find((f) => f.id === folderIdForSupabase);
+        folderName = folder?.name ?? null;
+      }
+
+      const tags = generateTags({
+        fileName: archivedWithCompression.name,
+        mimeType: archivedWithCompression.mimeType,
+        folderName,
+      });
+
+      await updateFileTags(archivedWithCompression.id, tags, "done");
+
+      archivedWithCompression.tags = tags;
+      files = [archivedWithCompression, ...files.filter((f) => f.id !== archivedWithCompression.id)];
+    } catch (err) {
+      console.error("[acadex:autoTag] tagging failed:", err);
+      void updateFileTags(archivedWithCompression.id, [], "failed").catch(() => { });
+    }
+  })();
+
   if (import.meta.env.DEV) {
     const nowIso = new Date().toISOString();
     console.info("[acadex:supabase:files:metadata]", {
@@ -510,7 +536,7 @@ export async function uploadFolder(
       const mimeType = driveFile.mimeType || file.type || "application/octet-stream";
       const createdAt = driveFile.createdTime || new Date().toISOString();
 
-      uploadedFiles.push({
+      const uploadedFile: ArchivedFile = {
         id: driveFile.id,
         name: driveFile.name || file.name,
         kind: detectKind(mimeType, file.name),
@@ -525,7 +551,27 @@ export async function uploadFolder(
         previewUrl: `https://drive.google.com/file/d/${driveFile.id}/view`,
         downloadUrl: `https://drive.google.com/uc?export=download&id=${driveFile.id}`,
         folderId: parentFolder.supabaseId,
-      });
+      };
+      uploadedFiles.push(uploadedFile);
+
+      void (async () => {
+        try {
+          const folderNameForTag =
+            pathParts.length > 0 ? pathParts[pathParts.length - 2] ?? null : null;
+
+          const tags = generateTags({
+            fileName: file.name,
+            mimeType: driveFile.mimeType || file.type || "application/octet-stream",
+            folderName: folderNameForTag,
+          });
+
+          await updateFileTags(driveFile.id, tags, "done");
+          uploadedFile.tags = tags;
+        } catch (err) {
+          console.error("[acadex:autoTag:folder] tagging failed for", file.name, err);
+          void updateFileTags(driveFile.id, [], "failed").catch(() => { });
+        }
+      })();
 
       succeeded += 1;
       totalOriginalBytes += originalSizeBytes;

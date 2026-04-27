@@ -1,4 +1,7 @@
 const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
+const TOKEN_KEY = "__acadex_token";
+const EXPIRY_KEY = "__acadex_token_expiry";
+
 let _accessToken: string | null = null;
 let gsiScriptPromise: Promise<void> | null = null;
 
@@ -9,12 +12,36 @@ declare global {
 }
 
 export function getAccessToken(): string {
-    if (!_accessToken) throw new Error("Not signed in");
-    return _accessToken;
+    if (_accessToken) return _accessToken;
+
+    try {
+        const stored = localStorage.getItem(TOKEN_KEY);
+        const expiry = Number(localStorage.getItem(EXPIRY_KEY));
+
+        if (stored && expiry && Date.now() < expiry) {
+            _accessToken = stored;
+            window.__acadex_token = stored;
+            return _accessToken;
+        }
+    } catch {
+        // Ignore localStorage problems and fall through to sign-out behavior.
+    }
+
+    signOutFromGoogle();
+    throw new Error("Not signed in");
 }
 
-export function setAccessToken(token: string) {
+export function setAccessToken(token: string, expiresIn: number) {
     _accessToken = token;
+    window.__acadex_token = token;
+
+    try {
+        localStorage.setItem(TOKEN_KEY, token);
+        const expiry = Date.now() + expiresIn * 1000;
+        localStorage.setItem(EXPIRY_KEY, String(expiry));
+    } catch {
+        // Ignore storage failures; token will remain in-memory for the session.
+    }
 }
 
 function ensureGoogleSdkLoaded(): Promise<void> {
@@ -82,8 +109,9 @@ export function signInWithGoogle(): Promise<GoogleProfile> {
                             return;
                         }
                         try {
-                            setAccessToken(tokenResponse.access_token);
-                            window.__acadex_token = tokenResponse.access_token;
+                            // Persist token with expiry when provided by Google
+                            const expiresIn = (tokenResponse as any).expires_in ?? 3600;
+                            setAccessToken(tokenResponse.access_token, Number(expiresIn));
                             const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
                                 headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
                             });
@@ -113,6 +141,20 @@ export function signInWithGoogle(): Promise<GoogleProfile> {
 
 export function signOutFromGoogle(): void {
     _accessToken = null;
+    try {
+        delete window.__acadex_token;
+    } catch {
+        // ignore
+    }
+
+    // Clear persisted token
+    try {
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(EXPIRY_KEY);
+    } catch {
+        // ignore
+    }
+
     window.google?.accounts.id.disableAutoSelect();
 }
 
