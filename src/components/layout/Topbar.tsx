@@ -120,7 +120,17 @@ export default function Topbar() {
   }, [isApple]);
 
   const showSuggestions = isFocused && !search;
-  const suggestedTags = ["CS101", "Admin", "Project", "Thesis", "Textbook", "Lab", "Exam"];
+  const suggestedTags = [
+    "exam",
+    "lab",
+    "thesis",
+    "project",
+    "textbook",
+    "syllabus",
+    "lecture",
+    "assignment",
+    "report",
+  ];
 
   /*
   async function handleSwitchRole(role: Role) {
