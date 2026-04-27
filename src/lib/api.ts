@@ -259,11 +259,21 @@ export async function getFile(id: string): Promise<ArchivedFile> {
   return file;
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) {
+    throw (signal.reason instanceof Error ? signal.reason : undefined)
+      ?? new DOMException("Aborted", "AbortError");
+  }
+}
+
 export async function uploadFile(
   file: File,
   targetFolderId: string | null = null,
-  onCompressionProgress?: (progress: number) => void
+  onCompressionProgress?: (progress: number) => void,
+  signal?: AbortSignal
 ): Promise<ArchivedFile> {
+  throwIfAborted(signal);
+
   const {
     data: { user: supabaseUser },
   } = await supabase.auth.getUser();
@@ -286,9 +296,12 @@ export async function uploadFile(
     throw apiError("duplicate_file", `"${file.name}" already exists in this folder.`);
   }
 
+  throwIfAborted(signal);
   const compression = await compressFile(file, {
     onProgress: onCompressionProgress,
+    signal,
   });
+  throwIfAborted(signal);
   const archived = await driveUpload(compression.compressedFile);
   const originalSizeBytes = file.size;
   const compressedSizeBytes = compression.compressedFile.size;
@@ -373,8 +386,10 @@ function detectKind(mimeType: string, name: string): FileKind {
 
 export async function uploadFolder(
   fileList: FileList,
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  signal?: AbortSignal
 ): Promise<FolderUploadSummary> {
+  throwIfAborted(signal);
   const filesToUpload = Array.from(fileList) as Array<File & { webkitRelativePath?: string }>;
   if (filesToUpload.length === 0) {
     return { succeeded: 0, failed: 0, totalOriginalBytes: 0, totalStoredBytes: 0 };
@@ -486,6 +501,7 @@ export async function uploadFolder(
   const uploadedFiles: ArchivedFile[] = [];
 
   for (let i = 0; i < filesToUpload.length; i += 1) {
+    if (signal?.aborted) break;
     const file = filesToUpload[i];
     const relativePath = (file.webkitRelativePath || `${rootFolderName}/${file.name}`).replace(/\\/g, "/");
     const pathParts = relativePath.split("/").filter(Boolean);
@@ -507,7 +523,7 @@ export async function uploadFolder(
         throw apiError("duplicate_file", `"${file.name}" already exists in this folder.`);
       }
 
-      const compression = await compressFile(file, { allowLargerOutput: true });
+      const compression = await compressFile(file, { allowLargerOutput: true, signal });
       const originalSizeBytes = file.size;
       const compressedSizeBytes = compression.compressedFile.size;
 
@@ -577,6 +593,9 @@ export async function uploadFolder(
       totalOriginalBytes += originalSizeBytes;
       totalStoredBytes += compressedSizeBytes;
     } catch (error) {
+      if ((error as { name?: string } | undefined)?.name === "AbortError") {
+        break;
+      }
       console.error(`[uploadFolder] Failed to upload ${relativePath}:`, error);
       failed += 1;
     }
