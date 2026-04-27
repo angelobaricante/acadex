@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, LogOut, Search, Type as TypeIcon, X } from "lucide-react";
+import { LogOut, Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,35 +42,6 @@ function roleLabel(role: Role): string {
   return role.charAt(0).toUpperCase() + role.slice(1);
 }
 
-type FontScale = "default" | "large" | "xl";
-const FONT_SCALE_KEY = "acadex_font_scale";
-const FONT_SCALE_CLASSES: Record<FontScale, string> = {
-  default: "",
-  large: "text-scale-large",
-  xl: "text-scale-xl",
-};
-const FONT_SCALE_LABELS: Record<FontScale, string> = {
-  default: "Default",
-  large: "Large",
-  xl: "Extra large",
-};
-
-function loadFontScale(): FontScale {
-  if (typeof window === "undefined") return "default";
-  const saved = localStorage.getItem(FONT_SCALE_KEY);
-  if (saved === "large" || saved === "xl") return saved;
-  return "default";
-}
-
-function applyFontScale(scale: FontScale) {
-  if (typeof document === "undefined") return;
-  const html = document.documentElement;
-  html.classList.remove("text-scale-large", "text-scale-xl");
-  if (FONT_SCALE_CLASSES[scale]) {
-    html.classList.add(FONT_SCALE_CLASSES[scale]);
-  }
-}
-
 function isAppleDevice(): boolean {
   if (typeof navigator === "undefined") return false;
   return /Mac|iPhone|iPod|iPad/i.test(navigator.platform) ||
@@ -84,15 +55,7 @@ export default function Topbar() {
   const { search, setSearch } = useShellSearch();
   const [isFocused, setIsFocused] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  const [fontScale, setFontScale] = useState<FontScale>(() => loadFontScale());
   const [isApple] = useState(() => isAppleDevice());
-
-  useEffect(() => {
-    applyFontScale(fontScale);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(FONT_SCALE_KEY, fontScale);
-    }
-  }, [fontScale]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -251,37 +214,6 @@ export default function Topbar() {
                   {user.email}
                 </div>
               </div>
-              <DropdownMenuSeparator />
-              <div className="flex items-center gap-2 px-2 py-1.5 text-[13px]">
-                <TypeIcon className="size-[14px] text-muted-foreground" strokeWidth={1.8} />
-                <span className="flex-1 text-foreground">Text size</span>
-              </div>
-              {(["default", "large", "xl"] as const).map((scale) => {
-                const active = fontScale === scale;
-                return (
-                  <DropdownMenuItem
-                    key={scale}
-                    onSelect={(e) => {
-                      e.preventDefault();
-                      setFontScale(scale);
-                    }}
-                    className={cn(
-                      "cursor-pointer gap-2 pl-8 pr-2 py-1.5 text-[13px]",
-                      active && "font-medium text-primary"
-                    )}
-                  >
-                    <span
-                      className="flex-1"
-                      style={{
-                        fontSize: scale === "default" ? "13px" : scale === "large" ? "14.5px" : "16px",
-                      }}
-                    >
-                      {FONT_SCALE_LABELS[scale]}
-                    </span>
-                    {active && <Check className="size-[14px] text-primary" strokeWidth={2} />}
-                  </DropdownMenuItem>
-                );
-              })}
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onSelect={handleSignOut}
