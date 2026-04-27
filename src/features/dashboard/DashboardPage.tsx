@@ -521,11 +521,6 @@ export default function DashboardPage() {
     !isFilesLoading &&
     !hasFolders &&
     !hasFiles;
-  const showFolderEmptyState =
-    showFoldersSection &&
-    !showFoldersStrip &&
-    !showMergedEmptyState &&
-    !(showFilesSection && hasFiles);
   const showFilesContentSection =
     showFilesSection &&
     !showMergedEmptyState &&
@@ -1061,16 +1056,24 @@ export default function DashboardPage() {
         );
       })()}
 
-      {showFolderEmptyState && (
-        <EmptyState
-          icon={<FolderOpen />}
-          title={search ? "No folders match your search" : "No folders yet"}
-          description={
-            search
-              ? "Try clearing the search or selecting another type."
-              : "Create a folder to organize your archive."
-          }
-        />
+      {showFoldersSection && isFoldersLoading && (
+        <section className="flex flex-col gap-2">
+          <SectionHeading label="Folders" />
+
+          {view === "grid" ? (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {Array.from({ length: folderGridColumns * 2 }).map((_, i) => (
+                <Skeleton key={i} className="h-[60px] rounded-xl" />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="h-[60px] rounded-lg" />
+              ))}
+            </div>
+          )}
+        </section>
       )}
 
       {showMergedEmptyState && (
