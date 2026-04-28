@@ -4,6 +4,19 @@ import { unzipSync, zipSync } from "fflate";
 import imageCompression from "browser-image-compression";
 import { FFmpeg } from "@ffmpeg/ffmpeg";
 import { fetchFile } from "@ffmpeg/util";
+import {
+    BlobSource,
+    BufferTarget,
+    Conversion,
+    ConversionCanceledError,
+    Input,
+    Mp4OutputFormat,
+    Output,
+    QUALITY_MEDIUM,
+    canEncodeAudio,
+    canEncodeVideo,
+    ALL_FORMATS,
+} from "mediabunny";
 
 export interface RendererCompressionResult {
     compressedFile: File;
@@ -165,11 +178,122 @@ async function compressImageInBrowser(
     };
 }
 
+let webCodecsSupportPromise: Promise<boolean> | null = null;
+
+function detectWebCodecsSupport(): Promise<boolean> {
+    if (webCodecsSupportPromise) {
+        return webCodecsSupportPromise;
+    }
+
+    webCodecsSupportPromise = (async () => {
+        if (typeof globalThis.VideoEncoder === "undefined" || typeof globalThis.AudioEncoder === "undefined") {
+            return false;
+        }
+
+        try {
+            const [video, audio] = await Promise.all([
+                canEncodeVideo("avc", { width: 1920, height: 1080, bitrate: QUALITY_MEDIUM }),
+                canEncodeAudio("aac", { numberOfChannels: 2, sampleRate: 48000, bitrate: 128_000 }),
+            ]);
+            return video && audio;
+        } catch {
+            return false;
+        }
+    })();
+
+    return webCodecsSupportPromise;
+}
+
+async function compressVideoWithWebCodecs(
+    file: File,
+    onProgress?: (progress: number) => void,
+    signal?: AbortSignal
+): Promise<FileCompressionOutput> {
+    throwIfAborted(signal);
+
+    const input = new Input({
+        source: new BlobSource(file),
+        formats: ALL_FORMATS,
+    });
+
+    const output = new Output({
+        format: new Mp4OutputFormat({ fastStart: "in-memory" }),
+        target: new BufferTarget(),
+    });
+
+    const conversion = await Conversion.init({
+        input,
+        output,
+        video: {
+            codec: "avc",
+            bitrate: QUALITY_MEDIUM,
+        },
+        audio: {
+            codec: "aac",
+            bitrate: 128_000,
+        },
+    });
+
+    if (!conversion.isValid) {
+        throw new Error("WebCodecs conversion configuration is not valid for this input");
+    }
+
+    if (onProgress) {
+        conversion.onProgress = (progress) => {
+            onProgress(Math.max(0, Math.min(99, Math.round(progress * 100))));
+        };
+    }
+
+    const onAbort = (): void => {
+        void conversion.cancel();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+
+    try {
+        await conversion.execute();
+    } catch (error) {
+        if (error instanceof ConversionCanceledError) {
+            throwIfAborted(signal);
+        }
+        throw error;
+    } finally {
+        signal?.removeEventListener("abort", onAbort);
+    }
+
+    throwIfAborted(signal);
+
+    const buffer = output.target.buffer;
+    if (!buffer) {
+        throw new Error("WebCodecs conversion produced no output buffer");
+    }
+
+    onProgress?.(100);
+
+    return {
+        bytes: new Uint8Array(buffer),
+        fileName: withExtension(file.name, "mp4"),
+        mimeType: "video/mp4",
+    };
+}
+
 async function compressVideoInBrowser(
     file: File,
     onProgress?: (progress: number) => void,
     signal?: AbortSignal
 ): Promise<FileCompressionOutput> {
+    throwIfAborted(signal);
+
+    if (await detectWebCodecsSupport()) {
+        try {
+            return await compressVideoWithWebCodecs(file, onProgress, signal);
+        } catch (error) {
+            if ((error as { name?: string } | undefined)?.name === "AbortError") {
+                throw error;
+            }
+            // Fall through to ffmpeg.wasm if WebCodecs path fails for this specific input.
+        }
+    }
+
     throwIfAborted(signal);
     const ffmpeg = await getBrowserFfmpeg();
 
