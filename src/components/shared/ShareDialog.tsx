@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/lib/store";
-import { createShareLink } from "@/lib/api";
 import type { SharePermission } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -42,8 +41,7 @@ export default function ShareDialog() {
     if (!shareDialog.fileId || generating) return;
     setGenerating(true);
     try {
-      const link = await createShareLink(shareDialog.fileId, permission);
-      setShareUrl(`${window.location.origin}/s/${link.id}`);
+      setShareUrl(`https://drive.google.com/file/d/${shareDialog.fileId}/view`);
     } catch {
       toast.error("Couldn't generate link", {
         description: "Please try again.",
