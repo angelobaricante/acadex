@@ -104,7 +104,7 @@ async function runUploadBatch(
         cancelled = true;
         break;
       }
-      toast.error(`Failed to upload ${file.name}`);
+      toast.error(`"${file.name}" already exists in this folder.`);
     }
   }
 
