@@ -99,10 +99,12 @@ const dashboardCache: {
   ownerId: string | undefined;
   allFiles: ArchivedFile[] | null;
   allFolders: Folder[] | null;
+  rootFolders: Folder[] | null;
 } = {
   ownerId: undefined,
   allFiles: null,
   allFolders: null,
+  rootFolders: null,
 };
 
 const ROLE_HEADINGS = {
@@ -157,7 +159,7 @@ export default function DashboardPage() {
   const [view, setView] = useState<ViewMode>("grid");
   const ownerIdForInit = user?.role === "student" ? user.id : undefined;
   const cacheValid = dashboardCache.ownerId === ownerIdForInit;
-  const [folders, setFolders] = useState<Folder[] | null>(null);
+  const [folders, setFolders] = useState<Folder[] | null>(cacheValid ? dashboardCache.rootFolders : null);
   const [allFolders, setAllFolders] = useState<Folder[] | null>(cacheValid ? dashboardCache.allFolders : null);
   const [allFiles, setAllFiles] = useState<ArchivedFile[] | null>(cacheValid ? dashboardCache.allFiles : null);
   const [folderTrail, setFolderTrail] = useState<Folder[]>([]);
@@ -245,14 +247,20 @@ export default function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
     const targetFolderId = activeFolder?.id ?? null;
+    if (targetFolderId === null && cacheValid && dashboardCache.rootFolders) {
+      setFolders(dashboardCache.rootFolders);
+    }
     listFolders(targetFolderId).then((result) => {
       if (cancelled) return;
       setFolders(result);
+      if (targetFolderId === null) {
+        dashboardCache.rootFolders = result;
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [foldersVersion, uploadsVersion, activeFolder]);
+  }, [cacheValid, foldersVersion, uploadsVersion, activeFolder]);
 
   // Keep a flat snapshot of all folders so folder tiles can show deep counts.
   useEffect(() => {
@@ -1056,7 +1064,7 @@ export default function DashboardPage() {
         );
       })()}
 
-      {showFoldersSection && isFoldersLoading && (
+      {showFoldersSection && isFoldersLoading && isFilesLoading && (
         <section className="flex flex-col gap-2">
           <SectionHeading label="Folders" />
 
